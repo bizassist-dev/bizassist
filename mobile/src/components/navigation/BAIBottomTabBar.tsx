@@ -35,7 +35,7 @@ const TAB_ORDER: CanonicalTab[] = ["pos", "inventory", "home", "settings"];
 const CANONICAL_SET = new Set<CanonicalTab>(TAB_ORDER);
 
 const ICONS: Record<CanonicalTab, keyof typeof MaterialCommunityIcons.glyphMap> = {
-	home: "clipboard-text-clock-outline",
+	home: "clipboard-clock-outline",
 	inventory: "package-variant",
 	pos: "cash-register",
 	settings: "cog-outline",
