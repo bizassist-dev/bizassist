@@ -98,7 +98,10 @@ function isSegmentRootName(name: string): boolean {
 }
 
 function isSettingsRootPath(pathname: string): boolean {
-	const p = String(pathname ?? "").toLowerCase().trim().replace(/\/+$/g, "");
+	const p = String(pathname ?? "")
+		.toLowerCase()
+		.trim()
+		.replace(/\/+$/g, "");
 	return (
 		p === "/settings" ||
 		p === "/settings/index" ||
