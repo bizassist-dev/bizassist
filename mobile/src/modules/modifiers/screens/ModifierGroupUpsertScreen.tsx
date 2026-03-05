@@ -508,13 +508,13 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 			borderColor: theme.dark ? baiColors.red[800] : theme.colors.error,
 			backgroundColor: theme.dark
 				? baiColors.red[900]
-				: theme.colors.errorContainer ?? theme.colors.surfaceVariant ?? theme.colors.surface,
+				: (theme.colors.errorContainer ?? theme.colors.surfaceVariant ?? theme.colors.surface),
 		}),
 		[theme.dark, theme.colors.error, theme.colors.errorContainer, theme.colors.surface, theme.colors.surfaceVariant],
 	);
 	const archiveButtonTextColor = theme.dark
 		? baiColors.red[200]
-		: theme.colors.onErrorContainer ?? theme.colors.error;
+		: (theme.colors.onErrorContainer ?? theme.colors.error);
 
 	useEffect(() => {
 		void queryClient.prefetchQuery({
@@ -815,10 +815,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 		() => formatCompactNumber(sharedAvailability?.groups.length ?? 0, countryCode),
 		[countryCode, sharedAvailability?.groups.length],
 	);
-	const archivedVisibleOptionRows = useMemo(
-		() => options.filter((row) => Boolean(row.removed && row.id)),
-		[options],
-	);
+	const archivedVisibleOptionRows = useMemo(() => options.filter((row) => Boolean(row.removed && row.id)), [options]);
 	const activeVisibleOptionRows = useMemo(() => activeOptions, [activeOptions]);
 	const activeOptionsEmpty = activeVisibleOptionRows.length === 0;
 	const archivedOptionsEmpty = archivedVisibleOptionRows.length === 0;
@@ -1155,9 +1152,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 					row={row}
 					rowIndex={index}
 					borderBottomColor={theme.colors.outlineVariant ?? theme.colors.outline}
-					namePlaceholderColor={
-						`${theme.colors.onSurface}66`
-					}
+					namePlaceholderColor={`${theme.colors.onSurface}66`}
 					nameTextColor={theme.colors.onSurface}
 					priceTextColor={hasInvalidPrice ? theme.colors.error : theme.colors.onSurface}
 					cursorIndicatorColor={theme.colors.primary}
@@ -1242,7 +1237,9 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 			parsedMax > MODIFIER_SELECTION_RULE_CAP ||
 			parsedMin > parsedMax
 		) {
-			setError(`Invalid min/max selection rules. Use min 0-${MODIFIER_SELECTION_RULE_CAP} and max 1-${MODIFIER_SELECTION_RULE_CAP}.`);
+			setError(
+				`Invalid min/max selection rules. Use min 0-${MODIFIER_SELECTION_RULE_CAP} and max 1-${MODIFIER_SELECTION_RULE_CAP}.`,
+			);
 			return;
 		}
 		setError(null);
@@ -1380,12 +1377,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 		<>
 			<Stack.Screen options={{ headerShown: false }} />
 			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} style={styles.root}>
-				<BAIHeader
-					title={headerTitle}
-					titleHorizontalPadding={30}
-					variant='exit'
-					onLeftPress={guardedExit}
-				/>
+				<BAIHeader title={headerTitle} titleHorizontalPadding={30} variant='exit' onLeftPress={guardedExit} />
 				<TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
 					<View style={[styles.wrap, { paddingBottom: tabBarHeight + 8 }]}>
 						<View style={styles.contentWrap}>
@@ -1441,12 +1433,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 												/>
 											</View>
 										</Pressable>
-										<View
-											style={[
-												styles.advancedRulesContainer,
-												controlSurfaceInteractive,
-											]}
-										>
+										<View style={[styles.advancedRulesContainer, controlSurfaceInteractive]}>
 											<Pressable
 												onPress={onToggleSelectionRules}
 												style={({ pressed }) => [styles.advancedRulesRow, pressed ? { opacity: 0.86 } : null]}

@@ -318,122 +318,121 @@ export function DiscountsLedgerScreen({
 					maxWidth={contentMaxWidth}
 				>
 					<BAISurface style={[styles.card, { borderColor }]} padded bordered>
+						<View style={styles.controls}>
+							<View style={styles.actionsRow}>
+								<BAIButton
+									variant='outline'
+									intent='neutral'
+									onPress={onCancel}
+									disabled={isUiDisabled}
+									shape='pill'
+									widthPreset='standard'
+									style={styles.actionButton}
+								>
+									Cancel
+								</BAIButton>
+								<BAIButton
+									shape='pill'
+									onPress={openCreate}
+									disabled={isUiDisabled}
+									widthPreset='standard'
+									style={styles.actionButton}
+								>
+									Create
+								</BAIButton>
+							</View>
 
-							<View style={styles.controls}>
-								<View style={styles.actionsRow}>
-									<BAIButton
-										variant='outline'
-										intent='neutral'
-										onPress={onCancel}
-										disabled={isUiDisabled}
-										shape='pill'
-										widthPreset='standard'
-										style={styles.actionButton}
-									>
-										Cancel
-									</BAIButton>
-									<BAIButton
-										shape='pill'
-										onPress={openCreate}
-										disabled={isUiDisabled}
-										widthPreset='standard'
-										style={styles.actionButton}
-									>
-										Create
-									</BAIButton>
-								</View>
+							{mode === "settings" ? (
+								<BAIPressableRow
+									label='Discount Visibility'
+									value={visibilityRowValue}
+									onPress={openVisibility}
+									disabled={isUiDisabled}
+									style={styles.visibilityRow}
+								/>
+							) : null}
 
-								{mode === "settings" ? (
-									<BAIPressableRow
-										label='Discount Visibility'
-										value={visibilityRowValue}
-										onPress={openVisibility}
+							<BAISearchBar
+								value={qText}
+								onChangeText={(v) => {
+									const cleaned = sanitizeSearchInput(v);
+									setQText(cleaned.length > FIELD_LIMITS.search ? cleaned.slice(0, FIELD_LIMITS.search) : cleaned);
+								}}
+								placeholder='Search discounts...'
+								maxLength={FIELD_LIMITS.search}
+								onClear={hasSearch ? onClearSearch : undefined}
+								disabled={isUiDisabled}
+							/>
+
+							<BAIGroupTabs
+								tabs={discountTabs}
+								value={filter}
+								onChange={setFilter}
+								disabled={isUiDisabled}
+								countFormatter={(count) => formatCompactNumber(count, countryCode)}
+							/>
+						</View>
+
+						<View style={styles.listSection}>
+							<FlatList
+								data={query.isLoading || query.isError ? [] : filteredItems}
+								keyExtractor={(it) => it.id}
+								contentContainerStyle={[
+									styles.listContent,
+									!query.isLoading && !query.isError && hasAnyFiltered ? null : styles.listContentEmpty,
+								]}
+								style={styles.list}
+								keyboardShouldPersistTaps='handled'
+								renderItem={({ item }) => (
+									<DiscountRow
+										item={item}
+										onPress={() => openDetails(item.id)}
 										disabled={isUiDisabled}
-										style={styles.visibilityRow}
+										currencyCode={currencyCode}
+										isHidden={hiddenDiscountIds.has(item.id)}
 									/>
-								) : null}
-
-								<BAISearchBar
-									value={qText}
-									onChangeText={(v) => {
-										const cleaned = sanitizeSearchInput(v);
-										setQText(cleaned.length > FIELD_LIMITS.search ? cleaned.slice(0, FIELD_LIMITS.search) : cleaned);
-									}}
-									placeholder='Search discounts...'
-									maxLength={FIELD_LIMITS.search}
-									onClear={hasSearch ? onClearSearch : undefined}
-									disabled={isUiDisabled}
-								/>
-
-								<BAIGroupTabs
-									tabs={discountTabs}
-									value={filter}
-									onChange={setFilter}
-									disabled={isUiDisabled}
-									countFormatter={(count) => formatCompactNumber(count, countryCode)}
-								/>
-							</View>
-
-							<View style={styles.listSection}>
-								<FlatList
-									data={query.isLoading || query.isError ? [] : filteredItems}
-									keyExtractor={(it) => it.id}
-									contentContainerStyle={[
-										styles.listContent,
-										!query.isLoading && !query.isError && hasAnyFiltered ? null : styles.listContentEmpty,
-									]}
-									style={styles.list}
-									keyboardShouldPersistTaps='handled'
-									renderItem={({ item }) => (
-										<DiscountRow
-											item={item}
-											onPress={() => openDetails(item.id)}
-											disabled={isUiDisabled}
-											currencyCode={currencyCode}
-											isHidden={hiddenDiscountIds.has(item.id)}
-										/>
-									)}
-									ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-									showsVerticalScrollIndicator={false}
-									ListEmptyComponent={
-										query.isLoading ? (
-											<View style={styles.stateBox}>
-												<BAIActivityIndicator />
-												<View style={{ height: 10 }} />
-												<BAIText variant='body' muted>
-													Loading...
+								)}
+								ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+								showsVerticalScrollIndicator={false}
+								ListEmptyComponent={
+									query.isLoading ? (
+										<View style={styles.stateBox}>
+											<BAIActivityIndicator />
+											<View style={{ height: 10 }} />
+											<BAIText variant='body' muted>
+												Loading...
+											</BAIText>
+										</View>
+									) : query.isError ? (
+										<View style={styles.stateBox}>
+											<BAIText variant='caption' muted>
+												Failed to load discounts.
+											</BAIText>
+											<View style={{ height: 10 }} />
+											<BAIRetryButton onPress={() => query.refetch()} disabled={isUiDisabled}>
+												Retry
+											</BAIRetryButton>
+										</View>
+									) : (
+										<View style={styles.stateBox}>
+											{hasSearch ? (
+												<BAIText variant='caption' muted style={styles.emptyText}>
+													No discounts match {`"${q}"`}.
 												</BAIText>
-											</View>
-										) : query.isError ? (
-											<View style={styles.stateBox}>
+											) : (
 												<BAIText variant='caption' muted>
-													Failed to load discounts.
+													{filter === "active"
+														? "No active discounts."
+														: filter === "archived"
+															? "No archived discounts."
+															: "No discounts available."}
 												</BAIText>
-												<View style={{ height: 10 }} />
-												<BAIRetryButton onPress={() => query.refetch()} disabled={isUiDisabled}>
-													Retry
-												</BAIRetryButton>
-											</View>
-										) : (
-											<View style={styles.stateBox}>
-												{hasSearch ? (
-													<BAIText variant='caption' muted style={styles.emptyText}>
-														No discounts match {`"${q}"`}.
-													</BAIText>
-												) : (
-													<BAIText variant='caption' muted>
-														{filter === "active"
-															? "No active discounts."
-															: filter === "archived"
-																? "No archived discounts."
-																: "No discounts available."}
-													</BAIText>
-												)}
-											</View>
-										)
-									}
-								/>
-							</View>
+											)}
+										</View>
+									)
+								}
+							/>
+						</View>
 					</BAISurface>
 				</SettingsScreenLayout>
 			</TouchableWithoutFeedback>
@@ -448,7 +447,6 @@ const styles = StyleSheet.create({
 	contentColumn: {
 		flex: 1,
 		minHeight: 0,
-	
 	},
 	card: {
 		flex: 1,

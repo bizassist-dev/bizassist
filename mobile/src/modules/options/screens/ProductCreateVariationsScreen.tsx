@@ -129,7 +129,9 @@ function formatStockOnHandDisplay(raw: string): string {
 }
 
 function moneyTextToMinorUnits(raw: string, scale: number, maxMinorDigits: number): number {
-	const cleaned = String(raw ?? "").replace(/,/g, "").replace(/[^\d.]/g, "");
+	const cleaned = String(raw ?? "")
+		.replace(/,/g, "")
+		.replace(/[^\d.]/g, "");
 	if (!cleaned) return 0;
 
 	const [intRaw = "", ...fractionParts] = cleaned.split(".");
@@ -153,11 +155,7 @@ function minorUnitsToMoneyText(minorUnits: number, scale: number): string {
 	return `${major}.${String(minor).padStart(scale, "0")}`;
 }
 
-function applyMoneyKeypadKey(
-	currentMinor: number,
-	key: BAINumericBottomSheetKey,
-	maxMinorDigits: number,
-): number {
+function applyMoneyKeypadKey(currentMinor: number, key: BAINumericBottomSheetKey, maxMinorDigits: number): number {
 	const currentDigits = sanitizeDigits(String(parseMinorUnits(currentMinor)));
 
 	if (key === "backspace") {
@@ -192,10 +190,7 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 		() => normalizeReturnTo(params[RETURN_TO_KEY]) ?? fallbackReturnTo,
 		[fallbackReturnTo, params],
 	);
-	const rootReturnTo = useMemo(
-		() => normalizeReturnTo(params[ROOT_RETURN_TO_KEY]) ?? returnTo,
-		[params, returnTo],
-	);
+	const rootReturnTo = useMemo(() => normalizeReturnTo(params[ROOT_RETURN_TO_KEY]) ?? returnTo, [params, returnTo]);
 	const thisRoute = useMemo(() => toScopedRoute(PRODUCT_CREATE_VARIATIONS_ROUTE), [toScopedRoute]);
 	const unitSelection = useMemo(() => parseUnitSelectionParams(params as any), [params]);
 
@@ -285,7 +280,10 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 
 	useEffect(() => {
 		const nextInitialized = generated.length > 0 ? true : draft.variationSelectionInitialized;
-		if (draft.variationSelectionInitialized === nextInitialized && arraysEqual(draft.selectedVariationKeys, selectedKeys)) {
+		if (
+			draft.variationSelectionInitialized === nextInitialized &&
+			arraysEqual(draft.selectedVariationKeys, selectedKeys)
+		) {
 			return;
 		}
 		patch({
@@ -506,16 +504,18 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 
 		if (
 			draft.variations.some(
-				(variation) => variation.variationKey === variationKey || variation.label.trim().toLowerCase() === label.toLowerCase(),
+				(variation) =>
+					variation.variationKey === variationKey || variation.label.trim().toLowerCase() === label.toLowerCase(),
 			)
 		) {
 			setDuplicateOpen(true);
 			return;
 		}
 
-		const nextVariations = [...draft.variations, { variationKey, label, valueMap: {}, sortOrder: draft.variations.length }].map(
-			(variation, idx) => ({ ...variation, sortOrder: idx }),
-		);
+		const nextVariations = [
+			...draft.variations,
+			{ variationKey, label, valueMap: {}, sortOrder: draft.variations.length },
+		].map((variation, idx) => ({ ...variation, sortOrder: idx }));
 
 		if (productId) {
 			let syncFailed = false;
@@ -557,7 +557,18 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 				...(productId ? { [PRODUCT_ID_KEY]: productId } : {}),
 			} as any,
 		});
-	}, [canCreateManual, draft.draftId, draft.variations, manualLabel, patch, productId, rootReturnTo, router, showError, withBusy]);
+	}, [
+		canCreateManual,
+		draft.draftId,
+		draft.variations,
+		manualLabel,
+		patch,
+		productId,
+		rootReturnTo,
+		router,
+		showError,
+		withBusy,
+	]);
 
 	const onCreate = useCallback(async () => {
 		if (isManualMode && generated.length === 0) {
@@ -623,7 +634,7 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 							(generated.length > 0 ? selectedKeys.length === 0 : isManualMode ? !canCreateManual : false)
 						}
 						rightSlot={({ disabled }) => (
-							<BAIHeaderActionButton label={generated.length > 0 ? 'Create' : 'Done'} disabled={disabled} />
+							<BAIHeaderActionButton label={generated.length > 0 ? "Create" : "Done"} disabled={disabled} />
 						)}
 					/>
 					<BAISurface style={[styles.card, { borderColor }]} padded={false}>
@@ -856,24 +867,24 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 												All variations
 											</BAIText>
 											<MaterialCommunityIcons
-													name={allSelected ? "check-circle" : "checkbox-blank-circle-outline"}
-													size={34}
-													color={allSelected ? theme.colors.primary : theme.colors.onSurfaceVariant}
-													onPress={() => {
-														if (allSelected) {
-															patch({
-																selectedVariationKeys: [],
-																variationSelectionInitialized: true,
-															});
-															return;
-														}
+												name={allSelected ? "check-circle" : "checkbox-blank-circle-outline"}
+												size={34}
+												color={allSelected ? theme.colors.primary : theme.colors.onSurfaceVariant}
+												onPress={() => {
+													if (allSelected) {
 														patch({
-															selectedVariationKeys: generated.map((variation) => variation.variationKey),
+															selectedVariationKeys: [],
 															variationSelectionInitialized: true,
 														});
-													}}
-												/>
-											</View>
+														return;
+													}
+													patch({
+														selectedVariationKeys: generated.map((variation) => variation.variationKey),
+														variationSelectionInitialized: true,
+													});
+												}}
+											/>
+										</View>
 									}
 									renderItem={({ item }) => {
 										const checked = selectedSet.has(item.variationKey);

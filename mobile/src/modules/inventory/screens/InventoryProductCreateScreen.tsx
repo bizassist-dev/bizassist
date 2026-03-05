@@ -170,7 +170,9 @@ function toMoneyOrNull(raw: string): number | null {
 }
 
 function moneyTextToMinorUnits(raw: string, scale: number, maxMinorDigits: number): number {
-	const cleaned = String(raw ?? "").replace(/,/g, "").replace(/[^\d.]/g, "");
+	const cleaned = String(raw ?? "")
+		.replace(/,/g, "")
+		.replace(/[^\d.]/g, "");
 	if (!cleaned) return 0;
 
 	const [intRaw = "", ...fractionParts] = cleaned.split(".");
@@ -194,11 +196,7 @@ function minorUnitsToMoneyText(minorUnits: number, scale: number): string {
 	return `${major}.${String(minor).padStart(scale, "0")}`;
 }
 
-function applyMoneyKeypadKey(
-	currentMinor: number,
-	key: BAINumericBottomSheetKey,
-	maxMinorDigits: number,
-): number {
+function applyMoneyKeypadKey(currentMinor: number, key: BAINumericBottomSheetKey, maxMinorDigits: number): number {
 	const currentDigits = sanitizeDigits(String(parseMinorUnits(currentMinor)));
 
 	if (key === "backspace") {
@@ -1237,13 +1235,7 @@ export default function InventoryProductCreateScreen({
 			/>
 
 			<BAIScreen tabbed padded={false} safeTop={false} style={styles.root}>
-				<View
-					style={[
-						styles.screen,
-						styles.scroll,
-						{ backgroundColor: theme.colors.background },
-					]}
-				>
+				<View style={[styles.screen, styles.scroll, { backgroundColor: theme.colors.background }]}>
 					<BAISurface style={[styles.card, { borderColor }]} padded={false}>
 						<ScrollView
 							style={styles.formScroll}
@@ -1366,8 +1358,8 @@ export default function InventoryProductCreateScreen({
 								{!hasManualOnlyVariations ? (
 									<>
 										<BAIText variant='body' style={{ marginBottom: 10, lineHeight: 28 }}>
-											Add a custom set of options to an item to create variations. For example, a size option set creates
-											variations small, medium, and large.
+											Add a custom set of options to an item to create variations. For example, a size option set
+											creates variations small, medium, and large.
 										</BAIText>
 
 										<BAIButton
@@ -1620,8 +1612,8 @@ export default function InventoryProductCreateScreen({
 										{!hasAvailableModifierGroups && !modifierGroupsQuery.isLoading && !modifierGroupsQuery.isError ? (
 											<>
 												<BAIText variant='body' style={styles.modifiersHelperText}>
-													Add a custom set of modifiers to customize this item at checkout, such as toppings,
-													add-ons, or special requests.
+													Add a custom set of modifiers to customize this item at checkout, such as toppings, add-ons,
+													or special requests.
 												</BAIText>
 												<BAIButton
 													variant='subtle'

@@ -8,7 +8,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
+import {
+	Image,
+	Keyboard,
+	Platform,
+	Pressable,
+	ScrollView,
+	StyleSheet,
+	TouchableWithoutFeedback,
+	View,
+} from "react-native";
 import { useTheme } from "react-native-paper";
 import { FontAwesome6 } from "@expo/vector-icons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
@@ -466,7 +475,7 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 											String(setId ?? "").trim(),
 											String(valueId ?? "").trim(),
 										]),
-								  )
+									)
 								: {},
 						sortOrder:
 							typeof variation?.sortOrder === "number" && Number.isFinite(variation.sortOrder)
@@ -896,10 +905,9 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 	const hasIncompleteOptionSelection = hasSelectedOptionSets && !hasCompleteOptionSelections;
 	const hasManualOnlyVariations = variationCount > 0 && !hasSelectedOptionSets;
 	const canCreateVariations = hasCompleteOptionSelections || !hasSelectedOptionSets;
-	const optionsVariationStateText =
-		hasManualOnlyVariations
-			? "Manual variations"
-			: variationCount > 0
+	const optionsVariationStateText = hasManualOnlyVariations
+		? "Manual variations"
+		: variationCount > 0
 			? `${variationCount} variations`
 			: hasSelectedOptionSets
 				? hasCompleteOptionSelections

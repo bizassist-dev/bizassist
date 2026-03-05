@@ -196,7 +196,10 @@ async function resolveServiceTimeUnitId(businessId: string, unitId: string | nul
 	return unit.id;
 }
 
-async function validateModifierGroupIds(businessId: string, modifierGroupIds: string[] | undefined): Promise<string[] | undefined> {
+async function validateModifierGroupIds(
+	businessId: string,
+	modifierGroupIds: string[] | undefined,
+): Promise<string[] | undefined> {
 	if (modifierGroupIds === undefined) return undefined;
 	const uniqueIds = Array.from(new Set((modifierGroupIds ?? []).map((id) => String(id).trim()).filter(Boolean)));
 	if (uniqueIds.length > MAX_MODIFIER_GROUPS_PER_PRODUCT) {
@@ -587,7 +590,9 @@ export class CatalogService {
 		const filteredItems =
 			selectedKeysRaw.length === 0
 				? items
-				: items.filter((item) => selectedKeysSet.has(item.variationKey)).map((item, idx) => ({ ...item, sortOrder: idx }));
+				: items
+						.filter((item) => selectedKeysSet.has(item.variationKey))
+						.map((item, idx) => ({ ...item, sortOrder: idx }));
 
 		if (selectedKeysRaw.length > 0 && filteredItems.length !== selectedKeysRaw.length) {
 			throw AppError.badRequest(
@@ -631,7 +636,7 @@ export class CatalogService {
 								archivedAt: null,
 							},
 							select: { id: true },
-					  })
+						})
 					: await tx.productVariation.create({
 							data: {
 								businessId,
@@ -641,7 +646,7 @@ export class CatalogService {
 								sortOrder: item.sortOrder,
 							},
 							select: { id: true },
-					  });
+						});
 
 				await tx.variationOptionValue.deleteMany({
 					where: {
@@ -739,7 +744,9 @@ export class CatalogService {
 				where: { businessId, productId },
 				select: { id: true, variationKey: true },
 			});
-			const existingVariationByKey = new Map(existingVariations.map((variation) => [variation.variationKey, variation]));
+			const existingVariationByKey = new Map(
+				existingVariations.map((variation) => [variation.variationKey, variation]),
+			);
 			const nextVariationKeySet = new Set(normalized.map((variation) => variation.variationKey));
 
 			for (const variation of normalized) {
@@ -754,7 +761,7 @@ export class CatalogService {
 								archivedAt: null,
 							},
 							select: { id: true },
-					  })
+						})
 					: await tx.productVariation.create({
 							data: {
 								businessId,
@@ -764,7 +771,7 @@ export class CatalogService {
 								sortOrder: variation.sortOrder,
 							},
 							select: { id: true },
-					  });
+						});
 
 				await tx.variationOptionValue.deleteMany({
 					where: {

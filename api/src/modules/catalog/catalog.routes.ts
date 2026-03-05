@@ -37,7 +37,15 @@ router.get("/products/:id", getProduct);
 router.post("/products", validateBody(createProductSchema), createProduct);
 router.patch("/products/:id", validateBody(updateProductSchema), updateProduct);
 router.post("/products/:id/variations/preview", validateBody(previewProductVariationsSchema), previewProductVariations);
-router.post("/products/:id/variations/generate", validateBody(generateProductVariationsSchema), generateProductVariations);
-router.post("/products/:id/variations/manual-sync", validateBody(syncManualProductVariationsSchema), syncManualProductVariations);
+router.post(
+	"/products/:id/variations/generate",
+	validateBody(generateProductVariationsSchema),
+	generateProductVariations,
+);
+router.post(
+	"/products/:id/variations/manual-sync",
+	validateBody(syncManualProductVariationsSchema),
+	syncManualProductVariations,
+);
 
 export const catalogRoutes = router;

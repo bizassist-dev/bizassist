@@ -94,7 +94,8 @@ export function ProductCreateOptionScreen({ routeScope = "inventory" }: { routeS
 	const scrollSpacerHeight = Math.round(windowHeight * 0.5);
 	const normalizedSetName = toTitleCase(sanitizeLabelInput(optionSetName)).trim();
 	const normalizedDisplayName = toTitleCase(sanitizeLabelInput(displayName)).trim();
-	const canCreate = normalizedSetName.length > 0 && normalizedDisplayName.length > 0 && optionValues.length > 0 && !isDisabled;
+	const canCreate =
+		normalizedSetName.length > 0 && normalizedDisplayName.length > 0 && optionValues.length > 0 && !isDisabled;
 
 	useEffect(() => {
 		if (!deleteRevealValue) return;

@@ -74,10 +74,7 @@ export function ProductSelectOptionsFlowScreen({ routeScope = "inventory" }: { r
 		() => normalizeReturnTo(params[RETURN_TO_KEY]) ?? fallbackReturnTo,
 		[fallbackReturnTo, params],
 	);
-	const rootReturnTo = useMemo(
-		() => normalizeReturnTo(params[ROOT_RETURN_TO_KEY]) ?? returnTo,
-		[params, returnTo],
-	);
+	const rootReturnTo = useMemo(() => normalizeReturnTo(params[ROOT_RETURN_TO_KEY]) ?? returnTo, [params, returnTo]);
 
 	const query = useOptionSetsList(false);
 	const items = useMemo(() => query.data ?? [], [query.data]);
@@ -351,7 +348,7 @@ export function ProductSelectOptionsFlowScreen({ routeScope = "inventory" }: { r
 														>
 															<View style={styles.rowMain}>
 																<BAIText variant='subtitle'>{row.name}</BAIText>
-													<BAIText variant='caption' muted numberOfLines={1}>
+																<BAIText variant='caption' muted numberOfLines={1}>
 																	{row.selectedNames.length > 0 ? row.selectedNames.join(", ") : "No options selected"}
 																</BAIText>
 															</View>

@@ -1,4 +1,5 @@
 Quick index:
+
 - See **2026-03-05 — Bottom Sheet vs Modal Selection Lock (Masterplan + Memory)** for canonical bottom sheet vs modal criteria.
 - See **2026-03-05 — API Contract + State Management + File Structure Governance Lock (Masterplan + Memory)** for architecture contract stabilization and implementation sequencing.
 - See **2026-03-05 — BizAssist SaaS Engineering Governance Framework Consolidation Lock** for canonical multi-layer governance coverage.
@@ -20,6 +21,7 @@ Quick index:
 ### Locked Scope
 
 The Technical Standards Manual is now a required governance layer and defines enforceable standards for:
+
 - code style
 - project structure
 - API design

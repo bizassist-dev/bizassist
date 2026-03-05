@@ -33,7 +33,10 @@ export const optionsApi = {
 		return res.data.data.item;
 	},
 
-	async updateOptionSet(id: string, input: { name?: string; displayName?: string; sortOrder?: number }): Promise<OptionSet> {
+	async updateOptionSet(
+		id: string,
+		input: { name?: string; displayName?: string; sortOrder?: number },
+	): Promise<OptionSet> {
 		const res = await apiClient.patch<{ success: true; data: { item: OptionSet } }>(
 			`/catalog/options/${encodeURIComponent(id)}`,
 			input,
@@ -79,7 +82,10 @@ export const optionsApi = {
 		return res.data.data.item;
 	},
 
-	async previewProductVariations(productId: string, input: { selections: VariationSelectionInput[] }): Promise<{
+	async previewProductVariations(
+		productId: string,
+		input: { selections: VariationSelectionInput[] },
+	): Promise<{
 		items: VariationPreviewItem[];
 		total: number;
 		warning: boolean;

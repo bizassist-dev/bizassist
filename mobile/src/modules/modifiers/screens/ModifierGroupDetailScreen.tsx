@@ -78,10 +78,7 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 	});
 
 	const group = query.data;
-	const visibleOptions = useMemo(
-		() => (group?.options ?? []).filter((option) => !option.isArchived),
-		[group?.options],
-	);
+	const visibleOptions = useMemo(() => (group?.options ?? []).filter((option) => !option.isArchived), [group?.options]);
 	const headerHorizontalPadding = paddingX || HEADER_SIDE_PADDING_FALLBACK;
 	const headerTitleMaxLength = useMemo(() => {
 		const rightReservedWidth = HEADER_RAIL_SIZE;
@@ -206,13 +203,7 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 				/>
 			),
 		}),
-		[
-			headerBase,
-			inventoryHeaderBase,
-			mode,
-			modifierHeaderTitle,
-			onBackToList,
-		],
+		[headerBase, inventoryHeaderBase, mode, modifierHeaderTitle, onBackToList],
 	);
 	const sharedAvailabilityGroupCountLabel = useMemo(
 		() => formatCompactNumber(sharedAvailability?.groups.length ?? 0, countryCode),
