@@ -2,17 +2,8 @@
 // path: app/(auth)/register.tsx
 
 import { Link, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import {
-	Image,
-	Keyboard,
-	KeyboardAvoidingView,
-	Platform,
-	ScrollView,
-	StyleSheet,
-	TouchableWithoutFeedback,
-	View,
-} from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Image, Keyboard, Platform, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
 import { TextInput, useTheme } from "react-native-paper";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
@@ -40,6 +31,13 @@ import Logo from "../../assets/images/BizAssist-logo.png";
 
 const CONTENT_MAX_WIDTH = 640;
 
+type RegisterFormValues = {
+	firstName: string;
+	lastName: string;
+	email: string;
+	password: string;
+};
+
 export default function RegisterScreen() {
 	const router = useRouter();
 	const { register, isBootstrapping, isAuthenticated } = useAuth();
@@ -55,7 +53,6 @@ export default function RegisterScreen() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-	const [, setAuthError] = useState<AuthDomainError | null>(null);
 
 	const isBusy = isSubmitting || isBootstrapping;
 
@@ -78,52 +75,67 @@ export default function RegisterScreen() {
 		return true;
 	};
 
-	const validate = () => {
+	const clearFieldError = useCallback((field: string) => {
+		setFieldErrors((prev) => {
+			if (!prev[field]) return prev;
+			const next = { ...prev };
+			delete next[field];
+			return next;
+		});
+	}, []);
+
+	const validate = useCallback((values: RegisterFormValues) => {
 		const errors: Record<string, string> = {};
 
-		const firstNameError = validateFirstName(firstName);
+		const firstNameError = validateFirstName(values.firstName);
 		if (firstNameError) errors.firstName = firstNameError;
 
-		const lastNameError = validateLastName(lastName);
+		const lastNameError = validateLastName(values.lastName);
 		if (lastNameError) errors.lastName = lastNameError;
 
-		const emailError = validateEmail(email);
+		const emailError = validateEmail(values.email);
 		if (emailError) errors.email = emailError;
 
-		const passwordError = validatePasswordForRegister(password);
+		const passwordError = validatePasswordForRegister(values.password);
 		if (passwordError) errors.password = passwordError;
 
 		setFieldErrors(errors);
 		return Object.keys(errors).length === 0;
-	};
+	}, []);
+
+	const sanitizedValues = useMemo<RegisterFormValues>(
+		() => ({
+			firstName: sanitizeNameInput(firstName).trim(),
+			lastName: sanitizeNameInput(lastName).trim(),
+			email: sanitizeEmailInput(email),
+			password,
+		}),
+		[firstName, lastName, email, password],
+	);
 
 	const handleSubmit = async () => {
 		if (isBusy) return;
 
 		if (submitLockRef.current) return;
-		submitLockRef.current = true;
-		setTimeout(() => {
-			submitLockRef.current = false;
-		}, 700);
 
 		setError(null);
-		setAuthError(null);
-		setFieldErrors({});
 
-		if (!validate()) return;
+		setFirstName(sanitizedValues.firstName);
+		setLastName(sanitizedValues.lastName);
+		setEmail(sanitizedValues.email);
 
+		if (!validate(sanitizedValues)) return;
+
+		submitLockRef.current = true;
 		setIsSubmitting(true);
 
 		try {
-			const safeFirstName = sanitizeNameInput(firstName).trim();
-			const safeLastName = sanitizeNameInput(lastName).trim();
-			const safeEmail = sanitizeEmailInput(email);
 			const result = await withBusy("Creating account…", async () => {
 				return await register({
-					firstName: safeFirstName,
-					lastName: safeLastName,
-					email: safeEmail,
-					password,
+					firstName: sanitizedValues.firstName,
+					lastName: sanitizedValues.lastName,
+					email: sanitizedValues.email,
+					password: sanitizedValues.password,
 				});
 			});
 
@@ -139,7 +151,6 @@ export default function RegisterScreen() {
 		} catch (err: any) {
 			if (err && (err as AuthDomainError).code) {
 				const typed = err as AuthDomainError;
-				setAuthError(typed);
 
 				if (typed.fieldErrors) {
 					setFieldErrors((prev) => ({
@@ -159,6 +170,7 @@ export default function RegisterScreen() {
 			}
 		} finally {
 			setIsSubmitting(false);
+			submitLockRef.current = false;
 		}
 	};
 
@@ -167,6 +179,7 @@ export default function RegisterScreen() {
 		if (!lockNav(700)) return;
 		router.push("/(auth)/login");
 	};
+	const dismissKeyboard = useCallback(() => Keyboard.dismiss(), []);
 
 	useEffect(() => {
 		if (!isBootstrapping && isAuthenticated) {
@@ -190,23 +203,18 @@ export default function RegisterScreen() {
 	const appTitleColor = theme.dark ? "rgba(255,255,255,0.92)" : "rgba(17,24,39,0.92)";
 	const linkColor = theme.dark ? "#93C5FD" : "#2563EB";
 
-	// Local-only label color for Sign Up button (kept as-is).
-	const signUpLabelColor = isBusy ? "#1A1A1A" : "#F9FAFB";
+	// Auth governance: create-account success CTA label stays light.
+	const signUpLabelColor = "#F9FAFB";
 
 	return (
-		<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-			<KeyboardAvoidingView
-				style={styles.kav}
-				behavior={Platform.OS === "ios" ? "padding" : "height"}
-				keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
-			>
-				<BAIScreen padded={false} scroll={false}>
-					<ScrollView
-						contentContainerStyle={styles.scrollContent}
-						showsVerticalScrollIndicator={false} // ✅ remove scroll bar
-						keyboardShouldPersistTaps='handled' // ✅ tap outside/controls works; no dead taps
-						keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} // ✅ swipe to dismiss
-					>
+		<TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
+			<BAIScreen padded={false} scroll={false}>
+				<ScrollView
+					contentContainerStyle={styles.scrollContent}
+					showsVerticalScrollIndicator={false} // ✅ remove scroll bar
+					keyboardShouldPersistTaps='always' // ✅ keep scroll/tap responsive while keyboard is open
+					keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"} // ✅ swipe to dismiss
+				>
 						<View style={styles.outer}>
 							<View style={styles.container}>
 								<View style={styles.logoContainer}>
@@ -236,7 +244,11 @@ export default function RegisterScreen() {
 										<View style={styles.inputGroup}>
 											<BAITextInput
 												value={firstName}
-												onChangeText={(value) => setFirstName(sanitizeNameInput(value))}
+												onChangeText={(value) => {
+													setFirstName(sanitizeNameInput(value));
+													setError(null);
+													clearFieldError("firstName");
+												}}
 												placeholder='First name'
 												maxLength={FIELD_LIMITS.firstName}
 												returnKeyType='next'
@@ -254,7 +266,11 @@ export default function RegisterScreen() {
 										<View style={styles.inputGroup}>
 											<BAITextInput
 												value={lastName}
-												onChangeText={(value) => setLastName(sanitizeNameInput(value))}
+												onChangeText={(value) => {
+													setLastName(sanitizeNameInput(value));
+													setError(null);
+													clearFieldError("lastName");
+												}}
 												placeholder='Last name'
 												maxLength={FIELD_LIMITS.lastName}
 												returnKeyType='next'
@@ -272,9 +288,15 @@ export default function RegisterScreen() {
 										<View style={styles.inputGroup}>
 											<BAITextInput
 												value={email}
-												onChangeText={(value) => setEmail(sanitizeEmailInput(value))}
+												onChangeText={(value) => {
+													setEmail(sanitizeEmailInput(value));
+													setError(null);
+													clearFieldError("email");
+												}}
 												autoCapitalize='none'
 												keyboardType='email-address'
+												autoComplete='email'
+												textContentType='emailAddress'
 												placeholder='Email'
 												maxLength={FIELD_LIMITS.email}
 												returnKeyType='next'
@@ -292,11 +314,17 @@ export default function RegisterScreen() {
 										<View style={styles.inputGroupNoBottom}>
 											<BAITextInput
 												value={password}
-												onChangeText={setPassword}
+												onChangeText={(value) => {
+													setPassword(value);
+													setError(null);
+													clearFieldError("password");
+												}}
 												secureTextEntry={!isPasswordVisible}
 												placeholder='Password'
 												maxLength={FIELD_LIMITS.password}
 												autoCapitalize='none'
+												autoComplete='password-new'
+												textContentType='newPassword'
 												returnKeyType='done'
 												onSubmitEditing={handleSubmit}
 												error={!!fieldErrors.password}
@@ -369,21 +397,16 @@ export default function RegisterScreen() {
 								</View>
 							</View>
 						</View>
-					</ScrollView>
-				</BAIScreen>
-			</KeyboardAvoidingView>
+				</ScrollView>
+			</BAIScreen>
 		</TouchableWithoutFeedback>
 	);
 }
 
 const styles = StyleSheet.create({
-	kav: {
-		flex: 1,
-	},
-
 	scrollContent: {
 		flexGrow: 1,
-		paddingBottom: 36,
+		paddingBottom: 250,
 	},
 
 	outer: {

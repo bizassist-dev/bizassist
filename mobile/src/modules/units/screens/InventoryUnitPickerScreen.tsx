@@ -582,7 +582,7 @@ export default function UnitPickerScreen({ routeScope }: { routeScope?: Inventor
 						</BAIRetryButton>
 					</BAISurface>
 					) : (
-						<View style={{ flex: 1 }}>
+						<View style={styles.contentWrap}>
 							<BAISurface style={[styles.card, { flex: 1 }]} padded>
 								<View style={styles.actionsRow}>
 									<BAIButton
@@ -684,7 +684,8 @@ export default function UnitPickerScreen({ routeScope }: { routeScope?: Inventor
 }
 
 const styles = StyleSheet.create({
-	card: { marginHorizontal: 16, marginTop: 0, borderRadius: 24, gap: 12 },
+	contentWrap: { flex: 1, minHeight: 0 },
+	card: { marginHorizontal: 16, marginTop: 0, borderRadius: 24, gap: 12, minHeight: 0 },
 	actionsRow: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -721,7 +722,7 @@ const styles = StyleSheet.create({
 		minWidth: 0,
 		gap: 1,
 	},
-	unitsScroll: { flex: 1 },
+	unitsScroll: { flex: 1, minHeight: 0 },
 	unitsListWrap: { paddingBottom: 6, gap: 8 },
 	innerRowWrap: { paddingTop: 6 },
 	sectionBlock: { paddingTop: 4, gap: 6 },

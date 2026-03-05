@@ -1,5 +1,28 @@
 // BizAssist_mobile
 // path: src/modules/inventory/screens/InventoryTabletScreen.tsx
+//
+// Capability Alignment
+// Capability:
+// - Catalog Management
+// - Inventory Management
+// Sub Capability:
+// - Item Management
+// - Service Management
+// - Inventory Activity
+// Owner Surface:
+// - mobile/app/(app)/(tabs)/inventory/inventory.tablet.tsx
+// - mobile/src/modules/inventory/screens/InventoryTabletScreen.tsx
+// Domain Entities:
+// - Product
+// - Category
+// - Unit
+// - InventoryMovement
+// System Invariants:
+// - archive-only lifecycle (no hard delete)
+// - business scoping required for all queries and mutations
+// - stock-health filters are applied to active, inventory-tracked items only
+// - this list screen is read model + navigation shell; stock mutations occur in dedicated ledger flows
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -7,14 +30,16 @@ import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
 
 import { BAIScreen } from "@/components/ui/BAIScreen";
+import { BAIGovernedScrollableLayout } from "@/components/ui/BAIGovernedScrollableLayout";
 import { BAIText } from "@/components/ui/BAIText";
 import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
+import { BAIEmptyStateButton } from "@/components/ui/BAIEmptyStateButton";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIGroupTabs, type BAIGroupTab } from "@/components/ui/BAIGroupTabs";
 import { formatMoney } from "@/shared/money/money.format";
 
 import { InventorySearchBar } from "@/modules/inventory/components/InventorySearchBar";
-import { InventoryListShell } from "@/modules/inventory/components/InventoryListShell";
 import { InventoryMovementRow } from "@/modules/inventory/components/InventoryMovementRow";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
@@ -37,7 +62,6 @@ import {
 	filterInventoryItems,
 	getInventoryHealthCounts,
 	inventoryHealthFilterEmptyLabel,
-	inventoryHealthFilterLabel,
 	normalizeInventoryHealthFilter,
 } from "@/modules/inventory/inventory.filters";
 
@@ -45,6 +69,7 @@ import { useNavLock } from "@/shared/hooks/useNavLock";
 
 type InventorySellableTabValue = "ITEMS" | "SERVICES";
 type InventoryStatusTabValue = "ACTIVE" | "ARCHIVED";
+type InventoryHealthTabValue = "ALL" | "healthy" | "low" | "out" | "reorder";
 
 const INVENTORY_STATUS_TAB_BASE = [
 	{ label: "Active", value: "ACTIVE" },
@@ -57,6 +82,7 @@ const INVENTORY_SELLABLE_TAB_BASE = [
 ] as const satisfies readonly BAIGroupTab<InventorySellableTabValue>[];
 
 const DECIMAL_PATTERN = /^-?\d+(\.\d+)?$/;
+const SEARCH_DEBOUNCE_MS = 300;
 
 function isService(p: InventoryProduct): boolean {
 	const raw =
@@ -217,6 +243,11 @@ function normalizeInventoryStatusTab(value: unknown): InventoryStatusTabValue {
 	return value.trim().toUpperCase() === "ARCHIVED" ? "ARCHIVED" : "ACTIVE";
 }
 
+function normalizeHealthTabValue(filter: ReturnType<typeof normalizeInventoryHealthFilter>): InventoryHealthTabValue {
+	if (!filter) return "ALL";
+	return filter;
+}
+
 function filterByStatusTab(items: InventoryProduct[], status: InventoryStatusTabValue): InventoryProduct[] {
 	if (status === "ARCHIVED") return items.filter((item) => item.isActive === false);
 	return items.filter((item) => item.isActive !== false);
@@ -271,12 +302,22 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 	const { canNavigate, safePush } = useNavLock({ lockMs: 650 });
 
 	const trimmedQ = useMemo(() => q.trim(), [q]);
-	const isSearching = trimmedQ.length > 0;
-	const hasHealthFilter = statusTabValue === "ACTIVE" && sellableTabValue === "ITEMS" && !!activeFilter;
+	const [debouncedQ, setDebouncedQ] = useState(trimmedQ);
+
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedQ(trimmedQ);
+		}, SEARCH_DEBOUNCE_MS);
+		return () => clearTimeout(timer);
+	}, [trimmedQ]);
+
+	const showHealthTabs = statusTabValue === "ACTIVE" && sellableTabValue === "ITEMS";
+	const hasHealthFilter = showHealthTabs && !!activeFilter;
+	const healthTabValue = normalizeHealthTabValue(activeFilter);
 
 	const productsQuery = useQuery({
-		queryKey: inventoryKeys.products(trimmedQ, { includeArchived: true }),
-		queryFn: () => inventoryApi.listProducts({ q: trimmedQ || undefined, includeArchived: true, limit: 100 }),
+		queryKey: inventoryKeys.products(debouncedQ, { includeArchived: true }),
+		queryFn: () => inventoryApi.listProducts({ q: debouncedQ || undefined, includeArchived: true, limit: 100 }),
 		staleTime: 30_000,
 	});
 
@@ -336,12 +377,6 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 
 	const activeItemItems = useMemo(() => filterByStatusTab(allItemItems, "ACTIVE"), [allItemItems]);
 	const healthCounts = useMemo(() => getInventoryHealthCounts(activeItemItems), [activeItemItems]);
-
-	const filteredItems = useMemo(() => {
-		if (statusTabValue === "ARCHIVED") return statusFilteredItems;
-		if (sellableTabValue === "SERVICES") return statusFilteredItems;
-		return filterInventoryItems(statusFilteredItems, activeFilter);
-	}, [activeFilter, sellableTabValue, statusFilteredItems, statusTabValue]);
 	const inStockCount = useMemo(
 		() =>
 			activeItemItems.filter(
@@ -349,6 +384,22 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 			).length,
 		[activeItemItems],
 	);
+	const healthTabs: readonly BAIGroupTab<InventoryHealthTabValue>[] = useMemo(
+		() => [
+			{ label: "All", value: "ALL", count: activeItemItems.length },
+			{ label: "In", value: "healthy", count: inStockCount },
+			{ label: "Low", value: "low", count: healthCounts.low },
+			{ label: "Out", value: "out", count: healthCounts.out },
+			{ label: "No RP", value: "reorder", count: healthCounts.missingReorder },
+		],
+		[activeItemItems.length, healthCounts.low, healthCounts.missingReorder, healthCounts.out, inStockCount],
+	);
+
+	const filteredItems = useMemo(() => {
+		if (statusTabValue === "ARCHIVED") return statusFilteredItems;
+		if (sellableTabValue === "SERVICES") return statusFilteredItems;
+		return filterInventoryItems(statusFilteredItems, activeFilter);
+	}, [activeFilter, sellableTabValue, statusFilteredItems, statusTabValue]);
 
 	const createRoute = useMemo(() => {
 		if (routeScope === "settings-items-services") {
@@ -382,11 +433,6 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		productsQuery.refetch().finally(() => setIsRefreshing(false));
 	}, [isRefreshing, productsQuery]);
 
-	const onClearFilter = useCallback(() => {
-		if (!canNavigate) return;
-		router.setParams({ filter: undefined });
-	}, [canNavigate, router]);
-
 	const onSetSellable = useCallback(
 		(v: InventorySellableTabValue) => {
 			if (!canNavigate) return;
@@ -408,6 +454,18 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 			}
 			// Archive list is status-driven only; health filter is active-only.
 			router.setParams({ status: "ARCHIVED", filter: undefined });
+		},
+		[canNavigate, router],
+	);
+
+	const onSetHealthTab = useCallback(
+		(v: InventoryHealthTabValue) => {
+			if (!canNavigate) return;
+			if (v === "ALL") {
+				router.setParams({ filter: undefined });
+				return;
+			}
+			router.setParams({ filter: v });
 		},
 		[canNavigate, router],
 	);
@@ -491,54 +549,6 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		[theme.colors.outlineVariant, theme.colors.outline, theme.colors.surface, theme.colors.surfaceVariant],
 	);
 
-	const leftList =
-		filteredItems.length === 0 ? null : (
-			<FlatList
-				data={filteredItems}
-				keyExtractor={(p) => p.id}
-				contentContainerStyle={styles.listContent}
-				style={styles.list} // ensures list consumes vertical space inside shell
-				showsVerticalScrollIndicator={false}
-				showsHorizontalScrollIndicator={false}
-				refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
-				renderItem={({ item }) => {
-					const categoryId = item.category?.id ?? item.categoryId ?? "";
-					const categoryMeta = categoryId && categoryMetaById.has(categoryId) ? categoryMetaById.get(categoryId) : null;
-					const categoryIsActive = categoryMeta?.isActive ?? item.category?.isActive ?? undefined;
-					const categoryColor = categoryMeta?.color ?? item.category?.color ?? null;
-					const { precisionScale, display } = formatOnHandDisplay(item, unitsById);
-					const rowItem: InventoryProduct = {
-						...item,
-						unitPrecisionScale: precisionScale,
-						onHandCachedRaw: display,
-					};
-					const isRowService = isService(item);
-					const onPressRow = () => {
-						if (!canNavigate) return;
-						if (sellableTabValue === "SERVICES" || isRowService) {
-							safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/services/${encodeURIComponent(item.id)}`));
-							return;
-						}
-						setSelectedId(item.id);
-					};
-
-					return (
-						<InventoryRow
-							item={rowItem}
-							active={item.id === selectedId}
-							categoryIsActive={categoryIsActive}
-							categoryColor={categoryColor}
-							showOnHandUnit={false}
-							onPress={onPressRow}
-							disabled={!canNavigate}
-						/>
-					);
-				}}
-				ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-				keyboardShouldPersistTaps='handled'
-			/>
-		);
-
 	const entityLabel = sellableTabValue === "SERVICES" ? "Services" : "Items";
 	const emptyTitle =
 		statusTabValue === "ARCHIVED"
@@ -559,42 +569,48 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 						? "Add Your First Service To Start Selling Services."
 						: "Add Your First Item To Start Tracking Inventory.";
 
-	const countLabel =
-		statusTabValue === "ARCHIVED"
-			? `${filteredItems.length} ${entityLabel} • Archived`
-			: hasHealthFilter
-				? `${filteredItems.length} ${entityLabel} • ${inventoryHealthFilterLabel(activeFilter!)}`
-				: `${filteredItems.length} ${entityLabel} • Active`;
-	const heroCountLabel = `All ${entityLabel}: ${formatCompactCount(sellableItems.length, countryCode)}`;
-
 	const syncLabel = productsQuery.isFetching ? "Syncing…" : "Synced";
-	const heroPills = useMemo(() => {
-		const pills: { key: string; label: string }[] = [];
-		if (heroCountLabel) pills.push({ key: "count", label: heroCountLabel });
-		pills.push({ key: "active", label: `Active ${formatCompactCount(activeSellableItems.length, countryCode)}` });
-		pills.push({ key: "archived", label: `Archived ${formatCompactCount(archivedSellableItems.length, countryCode)}` });
-		if (sellableTabValue === "ITEMS") {
-			pills.push({ key: "in-stock", label: `In ${formatCompactCount(inStockCount, countryCode)}` });
-			pills.push({ key: "low", label: `Low ${formatCompactCount(healthCounts.low, countryCode)}` });
-			pills.push({ key: "out", label: `Out ${formatCompactCount(healthCounts.out, countryCode)}` });
-		}
-		if (isSearching) pills.push({ key: "search", label: `Search ${trimmedQ}` });
-		if (hasHealthFilter) pills.push({ key: "filter", label: `Filter ${inventoryHealthFilterLabel(activeFilter!)}` });
-		return pills;
-	}, [
-		activeFilter,
-		activeSellableItems.length,
-		archivedSellableItems.length,
-		countryCode,
-		hasHealthFilter,
-		healthCounts.low,
-		healthCounts.out,
-		heroCountLabel,
-		inStockCount,
-		isSearching,
-		sellableTabValue,
-		trimmedQ,
-	]);
+	const isInitialLoading = productsQuery.isLoading && allItems.length === 0;
+	const isInitialError = !!productsQuery.isError && allItems.length === 0;
+	const showPrimaryEmptyCta =
+		statusTabValue === "ACTIVE" && !trimmedQ && !hasHealthFilter && filteredItems.length === 0 && !productsQuery.isError;
+
+	const renderInventoryRow = useCallback(
+		({ item }: { item: InventoryProduct }) => {
+			const categoryId = item.category?.id ?? item.categoryId ?? "";
+			const categoryMeta = categoryId && categoryMetaById.has(categoryId) ? categoryMetaById.get(categoryId) : null;
+			const categoryIsActive = categoryMeta?.isActive ?? item.category?.isActive ?? undefined;
+			const categoryColor = categoryMeta?.color ?? item.category?.color ?? null;
+			const { precisionScale, display } = formatOnHandDisplay(item, unitsById);
+			const rowItem: InventoryProduct = {
+				...item,
+				unitPrecisionScale: precisionScale,
+				onHandCachedRaw: display,
+			};
+			const isRowService = isService(item);
+			const onPressRow = () => {
+				if (!canNavigate) return;
+				if (sellableTabValue === "SERVICES" || isRowService) {
+					safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/services/${encodeURIComponent(item.id)}`));
+					return;
+				}
+				setSelectedId(item.id);
+			};
+
+			return (
+				<InventoryRow
+					item={rowItem}
+					active={item.id === selectedId}
+					categoryIsActive={categoryIsActive}
+					categoryColor={categoryColor}
+					showOnHandUnit={false}
+					onPress={onPressRow}
+					disabled={!canNavigate}
+				/>
+			);
+		},
+		[canNavigate, categoryMetaById, router, safePush, selectedId, sellableTabValue, toScopedRoute, unitsById],
+	);
 
 	const movementCountLabel = useMemo(() => {
 		if (movementsQuery.isLoading) return "Loading";
@@ -604,76 +620,60 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 	}, [countryCode, movementsQuery.data?.items?.length, movementsQuery.isLoading]);
 
 	return (
-		<BAIScreen tabbed padded={false} safeTop={routeScope !== "settings-items-services"} style={styles.root}>
+		<BAIScreen
+			tabbed
+			padded={false}
+			safeTop={routeScope !== "settings-items-services"}
+			safeBottom={false}
+			safeAreaGradientBottom
+			style={styles.root}
+		>
 			<View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-				<BAISurface style={styles.card} padded>
-					<View style={styles.heroRow}>
-						<View style={styles.heroLeft}>
-							<View style={styles.titleRow}>
-								<BAIText variant='caption' muted>
-									Inventory
-								</BAIText>
-								<View style={[styles.syncBadge, { borderColor, backgroundColor: surfaceAlt }]}>
-									<BAIText variant='caption' style={styles.syncBadgeText}>
-										{syncLabel}
+				<BAIGovernedScrollableLayout
+					top={
+						<View style={styles.fixedTopZone}>
+							<View style={styles.heroRow}>
+								<View style={styles.heroLeft}>
+									<View style={styles.titleRow}>
+										<BAIText variant='title' muted>
+											Inventory
+										</BAIText>
+										<View style={[styles.syncBadge, { borderColor, backgroundColor: surfaceAlt }]}>
+											<BAIText variant='caption' style={styles.syncBadgeText}>
+												{syncLabel}
+											</BAIText>
+										</View>
+									</View>
+									<BAIText variant='body' muted>
+										Items and services
 									</BAIText>
 								</View>
+
+								<View style={styles.heroRight}>
+									<BAIButton
+										widthPreset='standard'
+										mode='contained'
+										onPress={onPressCreate}
+										disabled={!canNavigate}
+										style={styles.addButton}
+									>
+										{sellableTabValue === "SERVICES" ? "Create service" : "Create item"}
+									</BAIButton>
+								</View>
 							</View>
-							<BAIText variant='title'>Inventory Workspace</BAIText>
-							<BAIText variant='caption' muted>
-								Workspace View For Fast Stock Operations.
-							</BAIText>
-						</View>
 
-						<View style={styles.heroRight}>
-							<BAIButton
-								widthPreset='standard'
-								mode='contained'
-								onPress={onPressCreate}
-								disabled={!canNavigate}
-								style={styles.addButton}
-							>
-								{sellableTabValue === "SERVICES" ? "Add Service" : "Add Item"}
-							</BAIButton>
-						</View>
-					</View>
+							<InventorySearchBar
+								value={q}
+								onChangeText={setQ}
+								onSubmit={() => setQ((v) => v.trim())}
+								onPressScan={() => safePush(router, toScopedRoute("/(app)/(tabs)/inventory/scan"))}
+								scanEnabled={canNavigate && sellableTabValue === "ITEMS"}
+								disabled={false}
+							/>
 
-					<View style={styles.metaPills}>
-						{heroPills.map((pill) => (
-							<View key={pill.key} style={[styles.metaPill, { borderColor, backgroundColor: surfaceAlt }]}>
-								<BAIText variant='caption' numberOfLines={1} style={styles.metaPillText}>
-									{pill.label}
-								</BAIText>
-							</View>
-						))}
-					</View>
-				</BAISurface>
-
-				{/* Critical: makes the workspace row consume all remaining height */}
-				<View style={styles.content}>
-					<View style={styles.workspace}>
-						<InventoryListShell
-							title={sellableTabValue === "SERVICES" ? "Services" : "Items"}
-							countLabel={countLabel}
-							isLoading={productsQuery.isLoading}
-							isFetching={productsQuery.isFetching}
-							isError={!!productsQuery.isError && filteredItems.length === 0}
-							onRetry={onRefresh}
-							emptyTitle={filteredItems.length === 0 && !productsQuery.isError ? emptyTitle : ""}
-							emptyBody={filteredItems.length === 0 && !productsQuery.isError ? emptyBody : ""}
-							showPrimaryEmptyCta={
-								statusTabValue === "ACTIVE" &&
-								!trimmedQ &&
-								!hasHealthFilter &&
-								filteredItems.length === 0 &&
-								!productsQuery.isError
-							}
-							primaryEmptyCtaLabel={sellableTabValue === "SERVICES" ? "Add Service" : "Add Item"}
-							primaryEmptyCtaShape='pill'
-							onPrimaryEmptyCta={onPressCreate}
-							topContent={
-								<>
-									<View style={styles.statusTabsRow}>
+							<BAISurface style={styles.filterSurface} padded={false} radius={16} borderWidth={StyleSheet.hairlineWidth}>
+								<View style={styles.filterPanel}>
+									<View style={styles.tabsRowTight}>
 										<BAIGroupTabs<InventorySellableTabValue>
 											tabs={sellableTabs}
 											value={sellableTabValue}
@@ -683,7 +683,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 										/>
 									</View>
 
-									<View style={styles.statusTabsRow}>
+									<View style={styles.tabsRowTight}>
 										<BAIGroupTabs<InventoryStatusTabValue>
 											tabs={statusTabs}
 											value={statusTabValue}
@@ -693,43 +693,83 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 										/>
 									</View>
 
-									<InventorySearchBar
-										value={q}
-										onChangeText={setQ}
-										onSubmit={() => setQ((v) => v.trim())}
-										onPressScan={() => safePush(router, toScopedRoute("/(app)/(tabs)/inventory/scan"))}
-										scanEnabled={canNavigate && sellableTabValue === "ITEMS"}
-										disabled={false}
-									/>
-
-									{hasHealthFilter ? (
-										<View style={styles.searchActionsRow}>
-											<View style={styles.searchHint}>
-												<BAIText variant='caption' muted>
-													Filter: {inventoryHealthFilterLabel(activeFilter!)}
-												</BAIText>
-											</View>
-											<View style={styles.searchActionButtons}>
-												<BAIButton
-													mode='outlined'
-													variant='outline'
-													widthPreset='standard'
-													onPress={onClearFilter}
-													disabled={!canNavigate}
-													style={styles.clearBtn}
-												>
-													Clear Filter
-												</BAIButton>
-											</View>
+									{showHealthTabs ? (
+										<View style={styles.tabsRowTight}>
+											<BAIGroupTabs<InventoryHealthTabValue>
+												tabs={healthTabs}
+												value={healthTabValue}
+												onChange={onSetHealthTab}
+												disabled={!canNavigate}
+												countFormatter={(count) => formatCompactCount(count, countryCode)}
+											/>
 										</View>
 									) : null}
-								</>
-							}
-						>
-							{leftList}
-						</InventoryListShell>
+								</View>
+							</BAISurface>
+						</View>
+					}
+					scrollArea={
+						<View style={styles.content}>
+							<View style={styles.workspace}>
+								<BAISurface style={styles.leftPane} padded={false} radius={20}>
+									{isInitialLoading ? (
+										<View style={styles.center}>
+											<BAIText variant='body' muted>
+												Loading inventory...
+											</BAIText>
+										</View>
+									) : isInitialError ? (
+										<View style={styles.center}>
+											<BAIText variant='subtitle'>Could not load inventory.</BAIText>
+											<BAIText variant='body' muted style={styles.centerText}>
+												Check your connection and retry.
+											</BAIText>
+											<View style={styles.retryWrap}>
+												<BAIRetryButton mode='contained' variant='outline' onPress={onRefresh}>
+													Retry
+												</BAIRetryButton>
+											</View>
+										</View>
+									) : (
+										<FlatList
+											data={filteredItems}
+											keyExtractor={(p) => p.id}
+											contentContainerStyle={[
+												styles.listContent,
+												filteredItems.length === 0 ? styles.listContentEmpty : null,
+											]}
+											style={styles.list}
+											showsVerticalScrollIndicator={false}
+											showsHorizontalScrollIndicator={false}
+											refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+											renderItem={renderInventoryRow}
+											ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+											ListEmptyComponent={
+												<View style={styles.emptyState}>
+													<BAIText variant='subtitle' style={styles.emptyStateTitle}>
+														{emptyTitle}
+													</BAIText>
+													<BAIText variant='body' muted style={styles.emptyStateBody}>
+														{emptyBody}
+													</BAIText>
+													{showPrimaryEmptyCta ? (
+														<View style={styles.emptyCtaWrap}>
+															<BAIEmptyStateButton
+																mode='contained'
+																shape='pill'
+																label={sellableTabValue === "SERVICES" ? "Create service" : "Create item"}
+																onPress={onPressCreate}
+															/>
+														</View>
+													) : null}
+												</View>
+											}
+											keyboardShouldPersistTaps='handled'
+										/>
+									)}
+								</BAISurface>
 
-						<BAISurface style={styles.rightPane} padded>
+								<BAISurface style={styles.rightPane} padded>
 							<View style={styles.rightPaneContent}>
 								{!selectedId ? (
 									<View style={styles.center}>
@@ -893,9 +933,11 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 									</>
 								)}
 							</View>
-						</BAISurface>
-					</View>
-				</View>
+								</BAISurface>
+							</View>
+						</View>
+					}
+				/>
 			</View>
 		</BAIScreen>
 	);
@@ -903,12 +945,11 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12, paddingBottom: 12, paddingTop: 0, gap: 12 },
+	screen: { flex: 1, minHeight: 0, paddingHorizontal: 12, paddingBottom: 12, paddingTop: 0, gap: 0 },
+	fixedTopZone: { paddingTop: 10, paddingBottom: 8, gap: 8 },
 
-	card: { overflow: "hidden" },
-
-	heroRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
-	heroLeft: { flex: 1, minWidth: 0, gap: 6 },
+	heroRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 16 },
+	heroLeft: { flex: 1, minWidth: 0, gap: 4 },
 	heroRight: { alignItems: "flex-end", gap: 6 },
 	titleRow: {
 		flexDirection: "row",
@@ -916,25 +957,7 @@ const styles = StyleSheet.create({
 		gap: 8,
 		flexWrap: "wrap",
 	},
-	addButton: { minWidth: 120 },
-
-	metaPills: {
-		marginTop: 10,
-		flexDirection: "row",
-		flexWrap: "wrap",
-		gap: 8,
-	},
-	metaPill: {
-		borderWidth: StyleSheet.hairlineWidth,
-		borderRadius: 999,
-		paddingHorizontal: 10,
-		paddingVertical: 6,
-		maxWidth: "100%",
-	},
-	metaPillText: {
-		textTransform: "uppercase",
-		letterSpacing: 0.3,
-	},
+	addButton: { minWidth: 150 },
 	syncBadge: {
 		borderWidth: StyleSheet.hairlineWidth,
 		borderRadius: 999,
@@ -945,42 +968,36 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 
-	searchActionsRow: {
-		marginTop: 10,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 10,
-	},
-	statusTabsRow: {
-		marginBottom: 10,
-	},
-	searchHint: {
-		flex: 1,
-		minWidth: 0,
-	},
-	searchActionButtons: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-	},
-
-	// Critical: forces the “workspace” region to occupy all remaining vertical space
 	content: { flex: 1, minHeight: 0 },
+	workspace: { flex: 1, minHeight: 0, flexDirection: "row", gap: 12 },
 
-	workspace: { flex: 1, flexDirection: "row", gap: 12 },
-
+	leftPane: { flex: 1.05, marginBottom: 0, overflow: "hidden" },
 	rightPane: { flex: 1 },
 	rightPaneContent: { flex: 1, overflow: "hidden" },
 
 	center: { flex: 1, padding: 16, alignItems: "center", justifyContent: "center" },
+	centerText: { marginTop: 8, textAlign: "center" },
+	retryWrap: { marginTop: 12 },
 	centerSmall: { padding: 12, alignItems: "center", justifyContent: "center" },
 
-	// Ensures FlatList fills the shell’s body instead of sizing to content
-	list: { flex: 1 },
-
-	listContent: { paddingVertical: 8 },
+	list: { flex: 1, minHeight: 0 },
+	filterSurface: { marginBottom: 0 },
+	filterPanel: { paddingHorizontal: 12, paddingVertical: 12, gap: 8 },
+	tabsRowTight: { marginTop: 2 },
+	listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12 },
+	listContentEmpty: { flexGrow: 1 },
 	itemGap: { height: 12 },
+	emptyState: {
+		flex: 1,
+		minHeight: 320,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 20,
+		paddingBottom: 28,
+	},
+	emptyStateTitle: { textAlign: "center" },
+	emptyStateBody: { textAlign: "center", marginTop: 8, maxWidth: 360 },
+	emptyCtaWrap: { marginTop: 14 },
 
 	detailHeroRow: {
 		flexDirection: "row",
@@ -1065,8 +1082,5 @@ const styles = StyleSheet.create({
 		paddingVertical: 6,
 	},
 	sectionBody: { paddingTop: 12 },
-	clearBtn: {
-		maxWidth: 140,
-	},
 	adjustBtn: { minWidth: 150 },
 });

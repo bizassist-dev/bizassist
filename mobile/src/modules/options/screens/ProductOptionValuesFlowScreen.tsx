@@ -294,6 +294,7 @@ export function ProductOptionValuesFlowScreen({ routeScope = "inventory" }: { ro
 						<FlatList
 							data={filteredValues}
 							keyExtractor={(item) => item.id}
+							style={styles.list}
 							contentContainerStyle={styles.listContent}
 							keyboardShouldPersistTaps='handled'
 							stickyHeaderIndices={[0]}
@@ -398,7 +399,7 @@ export function ProductOptionValuesFlowScreen({ routeScope = "inventory" }: { ro
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	panel: { flex: 1, marginHorizontal: 16, marginTop: 12, borderRadius: 24, overflow: "hidden" },
+	panel: { flex: 1, minHeight: 0, marginHorizontal: 16, marginTop: 12, borderRadius: 24, overflow: "hidden" },
 	topSection: {
 		paddingHorizontal: 12,
 		paddingTop: 10,
@@ -413,8 +414,9 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 14,
 		paddingVertical: 10,
 	},
-	stateScreenWrap: { flex: 1 },
+	stateScreenWrap: { flex: 1, minHeight: 0 },
 	stateWrap: { flex: 1, minHeight: 180, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
+	list: { flex: 1, minHeight: 0 },
 	listContent: { paddingBottom: 12 },
 	row: {
 		paddingHorizontal: 14,

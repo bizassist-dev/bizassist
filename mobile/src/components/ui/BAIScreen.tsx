@@ -3,13 +3,51 @@
 
 import React from "react";
 import { ScrollView, StyleSheet, View, type ScrollViewProps, type StyleProp, type ViewStyle } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTheme } from "react-native-paper";
 
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { useAppBackground } from "@/lib/theme/appBackground";
 
 const TAB_BAR_HEIGHT = 64;
 const TAB_BAR_GUTTER = 12;
+
+function clampAlpha(value: number): number {
+	if (!Number.isFinite(value)) return 1;
+	return Math.max(0, Math.min(1, value));
+}
+
+function colorWithAlpha(color: string, alpha: number, fallbackDark: boolean): string {
+	const a = clampAlpha(alpha);
+	const raw = String(color ?? "").trim();
+	if (!raw) return fallbackDark ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
+
+	const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+	if (hex) {
+		const token = hex[1];
+		const full = token.length === 3 ? token.split("").map((c) => `${c}${c}`).join("") : token;
+		const r = parseInt(full.slice(0, 2), 16);
+		const g = parseInt(full.slice(2, 4), 16);
+		const b = parseInt(full.slice(4, 6), 16);
+		return `rgba(${r},${g},${b},${a})`;
+	}
+
+	const rgb = raw.match(/^rgba?\(([^)]+)\)$/i);
+	if (rgb) {
+		const parts = rgb[1]
+			.split(",")
+			.map((part) => part.trim())
+			.slice(0, 3)
+			.map((part) => Number(part));
+		if (parts.length === 3 && parts.every((part) => Number.isFinite(part))) {
+			const [r, g, b] = parts;
+			return `rgba(${r},${g},${b},${a})`;
+		}
+	}
+
+	return fallbackDark ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
+}
 
 export type BAIScreenProps = {
 	children: React.ReactNode;
@@ -26,6 +64,8 @@ export type BAIScreenProps = {
 	 */
 	safeTop?: boolean;
 	safeBottom?: boolean;
+	safeAreaGradientTop?: boolean;
+	safeAreaGradientBottom?: boolean;
 
 	/**
 	 * Width governance
@@ -56,6 +96,8 @@ export function BAIScreen({
 	scroll = false,
 	safeTop = true,
 	safeBottom = true,
+	safeAreaGradientTop = false,
+	safeAreaGradientBottom = false,
 
 	// Refactor: full-width by default. Opt-in for centered max width.
 	constrainWidth = false,
@@ -65,6 +107,7 @@ export function BAIScreen({
 	scrollProps,
 }: BAIScreenProps) {
 	const insets = useSafeAreaInsets();
+	const theme = useTheme();
 	const { isTablet, contentMaxWidth, paddingX } = useResponsiveLayout();
 
 	const backgroundColor = useAppBackground();
@@ -84,6 +127,22 @@ export function BAIScreen({
 		},
 		style,
 	];
+
+	const showTopSafeGradient = safeAreaGradientTop && insets.top > 0;
+	const showBottomSafeGradient = safeAreaGradientBottom && insets.bottom > 0;
+	const topSafeHeight = insets.top + 20;
+	const bottomSafeHeight = insets.bottom + 32;
+
+	const topSafeGradientColors = theme.dark
+		? (["rgba(0,0,0,0.62)", "rgba(0,0,0,0.24)", "rgba(0,0,0,0)"] as const)
+		: (["rgba(255,255,255,0.95)", "rgba(255,255,255,0.58)", "rgba(255,255,255,0)"] as const);
+	const bottomSafeGradientColors = theme.dark
+		? ([
+				colorWithAlpha(backgroundColor, 0, true),
+				colorWithAlpha(backgroundColor, 0.78, true),
+				colorWithAlpha(backgroundColor, 1, true),
+			] as const)
+		: (["rgba(255,255,255,0)", "rgba(255,255,255,0.82)", "rgba(255,255,255,1)"] as const);
 
 	/**
 	 * Base content styling shared by scroll + non-scroll.
@@ -118,6 +177,20 @@ export function BAIScreen({
 				>
 					{children}
 				</ScrollView>
+				{showTopSafeGradient ? (
+					<LinearGradient
+						pointerEvents='none'
+						colors={topSafeGradientColors}
+						style={[styles.safeGradientOverlay, styles.safeGradientTop, { height: topSafeHeight }]}
+					/>
+				) : null}
+				{showBottomSafeGradient ? (
+					<LinearGradient
+						pointerEvents='none'
+						colors={bottomSafeGradientColors}
+						style={[styles.safeGradientOverlay, styles.safeGradientBottom, { height: bottomSafeHeight }]}
+					/>
+				) : null}
 			</View>
 		);
 	}
@@ -125,12 +198,26 @@ export function BAIScreen({
 	return (
 		<View style={rootStyle}>
 			<View style={[styles.nonScrollContent, baseContentStyle]}>{children}</View>
+			{showTopSafeGradient ? (
+				<LinearGradient
+					pointerEvents='none'
+					colors={topSafeGradientColors}
+					style={[styles.safeGradientOverlay, styles.safeGradientTop, { height: topSafeHeight }]}
+				/>
+			) : null}
+			{showBottomSafeGradient ? (
+				<LinearGradient
+					pointerEvents='none'
+					colors={bottomSafeGradientColors}
+					style={[styles.safeGradientOverlay, styles.safeGradientBottom, { height: bottomSafeHeight }]}
+				/>
+			) : null}
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	root: { flex: 1 },
+	root: { flex: 1, position: "relative" },
 	flex: { flex: 1 },
 
 	// ScrollView content container: grow, don’t “fix” height.
@@ -138,4 +225,17 @@ const styles = StyleSheet.create({
 
 	// Non-scroll content container: fill.
 	nonScrollContent: { flex: 1 },
+
+	safeGradientOverlay: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		zIndex: 20,
+	},
+	safeGradientTop: {
+		top: 0,
+	},
+	safeGradientBottom: {
+		bottom: 0,
+	},
 });

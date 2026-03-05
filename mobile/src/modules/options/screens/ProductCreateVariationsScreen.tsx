@@ -949,7 +949,7 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 10, paddingTop: 0, paddingBottom: 0 },
+	screen: { flex: 1, minHeight: 0, paddingHorizontal: 10, paddingTop: 0, paddingBottom: 0 },
 	card: {
 		flex: 1,
 		minHeight: 0,
@@ -962,7 +962,7 @@ const styles = StyleSheet.create({
 		marginTop: 0,
 		overflow: "hidden",
 	},
-	stateScreenWrap: { flex: 1 },
+	stateScreenWrap: { flex: 1, minHeight: 0 },
 	stateWrap: { flex: 1, minHeight: 180, alignItems: "center", justifyContent: "center", paddingHorizontal: 16 },
 	emptyHintText: {
 		textAlign: "center",
@@ -1025,7 +1025,7 @@ const styles = StyleSheet.create({
 	useOptionsButton: {
 		marginTop: 14,
 	},
-	optionsList: { flex: 1 },
+	optionsList: { flex: 1, minHeight: 0 },
 	listContent: { paddingBottom: 12 },
 	optionsTitleWrap: {
 		paddingHorizontal: 14,

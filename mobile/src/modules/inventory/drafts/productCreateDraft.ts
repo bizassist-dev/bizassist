@@ -12,6 +12,9 @@ export type ProductCreateDraft = {
 	categoryId: string;
 	categoryName: string;
 	modifierGroupIds: string[];
+	taxExempt: boolean;
+	selectedTaxIds: string[];
+	selectedTaxNames: string[];
 
 	// ✅ unit (UoM)
 	unitId: string;
@@ -86,6 +89,9 @@ export function createProductDraft(forcedDraftId?: string): ProductCreateDraft {
 		categoryId: "",
 		categoryName: "",
 		modifierGroupIds: [],
+		taxExempt: false,
+		selectedTaxIds: [],
+		selectedTaxNames: [],
 
 		// ✅ unit defaults (Each is resolved at screen level via unitsApi list)
 		unitId: "",

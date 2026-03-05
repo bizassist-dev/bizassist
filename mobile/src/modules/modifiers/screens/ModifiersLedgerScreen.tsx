@@ -299,10 +299,10 @@ export function ModifiersLedgerScreen() {
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	wrap: { flex: 1, paddingHorizontal: 8, paddingTop: 0 },
-	content: { flex: 1, width: "100%", alignSelf: "center" },
+	wrap: { flex: 1, minHeight: 0, paddingHorizontal: 8, paddingTop: 0 },
+	content: { flex: 1, minHeight: 0, width: "100%", alignSelf: "center" },
 	tablet: { maxWidth: 720 },
-	card: { flex: 1, borderRadius: 18, gap: 6 },
+	card: { flex: 1, minHeight: 0, borderRadius: 18, gap: 6 },
 	controls: { gap: 4, paddingBottom: 2 },
 	groupTabsWrap: {
 		paddingTop: 6,

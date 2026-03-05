@@ -12,6 +12,8 @@ import { BAIText } from "@/components/ui/BAIText";
 type PosCatalogListShellProps = {
 	title?: string; // default "Catalog"
 	countLabel: string;
+	showTitleAndCount?: boolean;
+	showSyncBadge?: boolean;
 	headerContent?: React.ReactNode;
 
 	isLoading: boolean;
@@ -48,32 +50,43 @@ export function PosCatalogListShell(props: PosCatalogListShellProps) {
 				? theme.colors.errorContainer ?? theme.colors.error
 				: theme.colors.surfaceVariant ?? theme.colors.surface;
 	const title = props.title ?? "Catalog";
+	const showTitleAndCount = props.showTitleAndCount ?? true;
+	const showSyncBadge = props.showSyncBadge ?? true;
+	const shouldShowHeader = showTitleAndCount || showSyncBadge;
 
 	return (
 		<BAISurface style={[styles.shell, props.containerStyle]} padded={false}>
-			<View style={[styles.header, { borderBottomColor: borderColor }]}>
-				<View style={{ flex: 1 }}>
-					<BAIText variant='subtitle'>{title}</BAIText>
-					<BAIText variant='caption' muted>
-						{props.countLabel}
-					</BAIText>
-				</View>
+			{shouldShowHeader ? (
+				<View style={[styles.header, { borderBottomColor: borderColor }]}>
+					{showTitleAndCount ? (
+						<View style={{ flex: 1 }}>
+							<BAIText variant='subtitle'>{title}</BAIText>
+							<BAIText variant='caption' muted>
+								{props.countLabel}
+							</BAIText>
+						</View>
+					) : (
+						<View style={styles.headerSpacer} />
+					)}
 
-				<View
-					style={[
-						styles.syncBadge,
-						{
-							borderColor: syncColor,
-							backgroundColor: syncBg,
-							opacity: syncOpacity,
-						},
-					]}
-				>
-					<BAIText variant='caption' muted={false} style={{ color: syncColor, fontWeight: "600" }}>
-						{syncLabel}
-					</BAIText>
+					{showSyncBadge ? (
+						<View
+							style={[
+								styles.syncBadge,
+								{
+									borderColor: syncColor,
+									backgroundColor: syncBg,
+									opacity: syncOpacity,
+								},
+							]}
+						>
+							<BAIText variant='caption' muted={false} style={{ color: syncColor, fontWeight: "600" }}>
+								{syncLabel}
+							</BAIText>
+						</View>
+					) : null}
 				</View>
-			</View>
+			) : null}
 
 			{props.headerContent ? <View style={[styles.headerContent, { borderBottomColor: borderColor }]}>{props.headerContent}</View> : null}
 
@@ -138,6 +151,7 @@ const styles = StyleSheet.create({
 		justifyContent: "space-between",
 		gap: 10,
 	},
+	headerSpacer: { flex: 1 },
 	headerContent: {
 		paddingHorizontal: 12,
 		paddingTop: 0,

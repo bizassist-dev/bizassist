@@ -320,6 +320,9 @@ Breaking changes require API versioning.
 - Keep form state local until explicit submit.
 - Validate before mutation.
 - Use continuous-scroll section architecture.
+- Normalize vertical rhythm across sibling forms (create/edit) using one spacing scale per flow.
+- For inventory/service form surfaces, treat `12` as the default vertical spacing unit for section content gaps, stacked field gaps, and action-group spacing unless a documented exception is required.
+- Avoid ad-hoc spacer views and negative/one-off margin nudges for vertical layout; prefer governed style tokens in the screen StyleSheet.
 
 ### Performance Review Rules
 
@@ -654,6 +657,18 @@ Safety constraints:
 - no new module creation without architecture review
 - no duplicated domain logic across modules
 - no UI features outside defined workspaces
+
+## 0.11 UI Padding Axis Terminology (Locked)
+
+Purpose:
+- This terminology lock standardizes spacing language used in UI implementation requests and reviews.
+
+Locked mapping:
+- `x padding` means horizontal padding (x-axis).
+- `y padding` means vertical padding (y-axis).
+
+Enforcement:
+- Unless explicitly overridden in the request, all UI tasks must interpret x/y padding terms using this mapping.
 
 ## 1. Non‑Negotiable Product Principles
 

@@ -1123,9 +1123,7 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 											/>
 										) : null}
 
-										<View style={{ height: 8 }} />
-
-										<BAIText variant='subtitle' style={{ marginBottom: 8 }}>
+										<BAIText variant='subtitle'>
 											{hasManualOnlyVariations ? "Variations" : "Options setup"}
 										</BAIText>
 
@@ -1135,10 +1133,9 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 												value={optionsVariationStateText}
 												onPress={openOptionsVariations}
 												disabled={isUiDisabled || isArchived || !productId}
-												style={{ marginBottom: 8 }}
 											/>
 										) : (
-											<BAIText variant='caption' muted style={{ marginBottom: 8 }}>
+											<BAIText variant='caption' muted>
 												Options are hidden while manual variations are active.
 											</BAIText>
 										)}
@@ -1166,7 +1163,7 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 										) : null}
 
 										{hasIncompleteOptionSelection ? (
-											<BAIText variant='caption' muted style={{ marginBottom: 8 }}>
+											<BAIText variant='caption' muted>
 												Select at least one value in each option set to create variations.
 											</BAIText>
 										) : null}
@@ -1192,8 +1189,7 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 
 										{sortedVariations.length > 0 ? (
 											<>
-												<View style={{ height: 12 }} />
-												<BAIText variant='subtitle' style={{ marginBottom: 8 }}>
+												<BAIText variant='subtitle'>
 													Variations
 												</BAIText>
 												<View style={styles.variationRowsWrap}>
@@ -1229,71 +1225,71 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 											</>
 										) : null}
 
-										<View style={{ height: 12 }} />
-
 										<BAIText variant='subtitle'>Price and Inventory</BAIText>
 
-										<BAIMinorMoneyInput
-											label='Price'
-											value={priceText}
-											onChangeText={setPriceText}
-											currencyCode={currencyCode}
-											maxMinorDigits={11}
-											style={styles.moneyHalfInput}
-											contentStyle={styles.moneyValueInputContent}
-											disabled={isUiDisabled || isArchived}
-										/>
-
-										<BAIMinorMoneyInput
-											label='Cost (optional)'
-											value={costText}
-											onChangeText={setCostText}
-											currencyCode={currencyCode}
-											maxMinorDigits={11}
-											style={styles.moneyHalfInput}
-											contentStyle={styles.moneyValueInputContent}
-											disabled={isUiDisabled || isArchived}
-										/>
-
-										<View style={{ height: 6 }} />
-
-										<BAISwitchRow
-											style={{ marginBottom: 6 }}
-											switchVariant='blue'
-											label='Track inventory'
-											description='If off, this item will not affect stock counts.'
-											value={trackInventory}
-											onValueChange={(next) => setTrackInventory(next)}
-											disabled={isUiDisabled || isArchived}
-										/>
-
-										{trackInventory ? (
-											<>
-												<BAITextInput
-													label='Reorder point (optional)'
-													value={reorderPointText}
-													onChangeText={(t) => {
-														const s0 = sanitizeQuantityInput(t, precisionScale);
-														const s1 = enforceUdiqCaps(s0, precisionScale, qtyMaxLen);
-														setReorderPointText(s1);
-													}}
-													onBlur={() => {
-														if (isUiDisabled) return;
-														setReorderPointText((prev) => normalizeQuantityForBlur(prev, precisionScale, qtyMaxLen));
-													}}
-													maxLength={qtyMaxLen}
-													keyboardType={quantityKeyboardType}
-													placeholder={quantityPlaceholder}
+										<View style={styles.priceInventoryStack}>
+											<View style={styles.priceInventoryFieldsStack}>
+												<BAIMinorMoneyInput
+													label='Price'
+													value={priceText}
+													onChangeText={setPriceText}
+													currencyCode={currencyCode}
+													maxMinorDigits={11}
+													style={styles.moneyHalfInput}
+													contentStyle={styles.moneyValueInputContent}
 													disabled={isUiDisabled || isArchived}
-													{...({ helperText: precisionHelperText } as any)}
 												/>
-												{!reorderCheck.ok ? (
-													<BAIText variant='caption' style={{ color: theme.colors.error }}>
-														{reorderCheck.message}
-													</BAIText>
+
+												<BAIMinorMoneyInput
+													label='Cost (optional)'
+													value={costText}
+													onChangeText={setCostText}
+													currencyCode={currencyCode}
+													maxMinorDigits={11}
+													style={styles.moneyHalfInput}
+													contentStyle={styles.moneyValueInputContent}
+													disabled={isUiDisabled || isArchived}
+												/>
+
+												<BAISwitchRow
+													style={styles.trackInventorySwitch}
+													switchVariant='blue'
+													label='Track inventory'
+													description='If off, this item will not affect stock counts.'
+													value={trackInventory}
+													onValueChange={(next) => setTrackInventory(next)}
+													disabled={isUiDisabled || isArchived}
+												/>
+
+												{trackInventory ? (
+													<>
+														<BAITextInput
+															label='Reorder point (optional)'
+															value={reorderPointText}
+															onChangeText={(t) => {
+																const s0 = sanitizeQuantityInput(t, precisionScale);
+																const s1 = enforceUdiqCaps(s0, precisionScale, qtyMaxLen);
+																setReorderPointText(s1);
+															}}
+															onBlur={() => {
+																if (isUiDisabled) return;
+																setReorderPointText((prev) => normalizeQuantityForBlur(prev, precisionScale, qtyMaxLen));
+															}}
+															maxLength={qtyMaxLen}
+															keyboardType={quantityKeyboardType}
+															placeholder={quantityPlaceholder}
+															disabled={isUiDisabled || isArchived}
+															{...({ helperText: precisionHelperText } as any)}
+														/>
+														{!reorderCheck.ok ? (
+															<BAIText variant='caption' style={{ color: theme.colors.error }}>
+																{reorderCheck.message}
+															</BAIText>
+														) : null}
+													</>
 												) : null}
-											</>
-										) : null}
+											</View>
+										</View>
 
 										{error ? (
 											<BAIText variant='caption' style={{ color: theme.colors.error }}>
@@ -1358,6 +1354,7 @@ const styles = StyleSheet.create({
 	formContainer: {
 		paddingHorizontal: 14,
 		paddingBottom: 220,
+		gap: 12,
 	},
 	moneyHalfInput: {
 		width: "100%",
@@ -1367,12 +1364,12 @@ const styles = StyleSheet.create({
 		paddingLeft: 16,
 		paddingRight: 20,
 	},
-	banner: { borderRadius: 16, gap: 10 },
+	banner: { borderRadius: 16, gap: 12 },
 	notice: { borderRadius: 12 },
 	imageSection: {
 		alignItems: "center",
-		gap: 10,
-		marginBottom: 16,
+		gap: 12,
+		marginBottom: 12,
 		marginTop: 6,
 	},
 	imagePreview: {
@@ -1465,12 +1462,21 @@ const styles = StyleSheet.create({
 	},
 	actions: {
 		flexDirection: "row",
-		gap: 10,
-		marginTop: 16,
-		marginBottom: 8,
+		gap: 12,
+		marginTop: 12,
+		marginBottom: 0,
+	},
+	trackInventorySwitch: {
+		marginBottom: 0,
+	},
+	priceInventoryStack: {
+		gap: 12,
+	},
+	priceInventoryFieldsStack: {
+		gap: 12,
 	},
 	optionSummaryWrap: {
-		gap: 8,
+		gap: 12,
 	},
 	optionSummaryRow: {
 		paddingHorizontal: 12,
@@ -1480,7 +1486,7 @@ const styles = StyleSheet.create({
 		gap: 2,
 	},
 	variationRowsWrap: {
-		gap: 8,
+		gap: 12,
 	},
 	variationRow: {
 		flexDirection: "row",

@@ -1,6 +1,6 @@
 // BizAssist_mobile path: app/(auth)/login.tsx
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { TextInput, useTheme } from "react-native-paper";
 
@@ -21,6 +21,11 @@ import { FIELD_LIMITS } from "@/shared/fieldLimits";
 import { sanitizeEmailInput } from "@/shared/validation/sanitize";
 import Logo from "../../assets/images/BizAssist-logo.png";
 
+type LoginFormValues = {
+	email: string;
+	password: string;
+};
+
 export default function LoginScreen() {
 	const router = useRouter();
 	const { login, isBootstrapping, isAuthenticated } = useAuth();
@@ -34,7 +39,6 @@ export default function LoginScreen() {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-	const [, setAuthError] = useState<AuthDomainError | null>(null);
 
 	const submitLockRef = useRef(false);
 
@@ -57,47 +61,61 @@ export default function LoginScreen() {
 		return true;
 	};
 
-	const validate = () => {
+	const clearFieldError = useCallback((field: string) => {
+		setFieldErrors((prev) => {
+			if (!prev[field]) return prev;
+			const next = { ...prev };
+			delete next[field];
+			return next;
+		});
+	}, []);
+
+	const validate = useCallback((values: LoginFormValues) => {
 		const errors: Record<string, string> = {};
 
-		const emailError = validateEmail(email);
+		const emailError = validateEmail(values.email);
 		if (emailError) errors.email = emailError;
 
-		const passwordError = validatePasswordForLogin(password);
+		const passwordError = validatePasswordForLogin(values.password);
 		if (passwordError) errors.password = passwordError;
 
 		setFieldErrors(errors);
 		return Object.keys(errors).length === 0;
-	};
+	}, []);
+
+	const sanitizedValues = useMemo<LoginFormValues>(
+		() => ({
+			email: sanitizeEmailInput(email),
+			password,
+		}),
+		[email, password],
+	);
 
 	const handleSubmit = async () => {
 		if (isBusy) return;
 
 		if (submitLockRef.current) return;
-		submitLockRef.current = true;
-		setTimeout(() => {
-			submitLockRef.current = false;
-		}, 700);
 
 		setError(null);
-		setAuthError(null);
-		setFieldErrors({});
+		setEmail(sanitizedValues.email);
 
-		if (!validate()) return;
+		if (!validate(sanitizedValues)) return;
 
+		submitLockRef.current = true;
 		setIsSubmitting(true);
 
 		try {
-			const safeEmail = sanitizeEmailInput(email);
 			await withBusy("Signing you in…", async () => {
-				await login({ email: safeEmail, password });
+				await login({
+					email: sanitizedValues.email,
+					password: sanitizedValues.password,
+				});
 			});
 
 			router.replace("/(system)/bootstrap");
 		} catch (err: any) {
 			if (err && (err as AuthDomainError).code) {
 				const typed = err as AuthDomainError;
-				setAuthError(typed);
 
 				if (typed.fieldErrors) {
 					setFieldErrors((prev) => ({
@@ -109,7 +127,7 @@ export default function LoginScreen() {
 				if (typed.code === "EMAIL_VERIFICATION_REQUIRED") {
 					setError("Email verification required");
 
-					const safeEmail = sanitizeEmailInput(typed.email ?? email);
+					const safeEmail = sanitizeEmailInput(typed.email ?? sanitizedValues.email);
 					const safePurpose = (typed.purpose ?? "REGISTER") as any;
 
 					const cooldown =
@@ -145,6 +163,7 @@ export default function LoginScreen() {
 			}
 		} finally {
 			setIsSubmitting(false);
+			submitLockRef.current = false;
 		}
 	};
 
@@ -222,9 +241,15 @@ export default function LoginScreen() {
 								<View style={styles.inputGroup}>
 									<BAITextInput
 										value={email}
-										onChangeText={(value) => setEmail(sanitizeEmailInput(value))}
+										onChangeText={(value) => {
+											setEmail(sanitizeEmailInput(value));
+											setError(null);
+											clearFieldError("email");
+										}}
 										autoCapitalize='none'
 										keyboardType='email-address'
+										autoComplete='email'
+										textContentType='emailAddress'
 										placeholder='Email'
 										maxLength={FIELD_LIMITS.email}
 										returnKeyType='next'
@@ -242,11 +267,17 @@ export default function LoginScreen() {
 								<View style={styles.inputGroupNoBottom}>
 									<BAITextInput
 										value={password}
-										onChangeText={setPassword}
+										onChangeText={(value) => {
+											setPassword(value);
+											setError(null);
+											clearFieldError("password");
+										}}
 										secureTextEntry={!isPasswordVisible}
 										placeholder='Password'
 										maxLength={FIELD_LIMITS.password}
 										autoCapitalize='none'
+										autoComplete='password'
+										textContentType='password'
 										returnKeyType='done'
 										onSubmitEditing={handleSubmit}
 										error={!!fieldErrors.password}
@@ -325,6 +356,7 @@ const styles = StyleSheet.create({
 	scrollContent: {
 		flexGrow: 1,
 		paddingBottom: 36,
+		marginBottom: 250,
 	},
 
 	outer: {

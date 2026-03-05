@@ -365,6 +365,7 @@ export default function CategoryPickerScreen({ routeScope = "inventory" }: { rou
 									<FlatList
 										data={filteredItems}
 										keyExtractor={(it) => it.id}
+										style={styles.list}
 										renderItem={({ item }) => (
 											<CategoryRow
 												item={item}
@@ -393,11 +394,12 @@ const styles = StyleSheet.create({
 
 	screen: {
 		flex: 1,
+		minHeight: 0,
 		padding: 12,
 		paddingTop: 0,
 	},
 
-	card: { flex: 1, gap: 10 },
+	card: { flex: 1, minHeight: 0, gap: 10 },
 
 	actionRow: {
 		flexDirection: "row",
@@ -409,7 +411,9 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 
-	listContainer: { flex: 1 },
+	listContainer: { flex: 1, minHeight: 0 },
+
+	list: { flex: 1, minHeight: 0 },
 
 	listContent: {
 		paddingTop: 0,

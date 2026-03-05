@@ -20,7 +20,7 @@
 //   Solution: wire Cancel to onExitToAddItems.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -128,6 +128,19 @@ import {
 	RETURN_TO_KEY as OPTION_RETURN_TO_KEY,
 } from "@/modules/options/productOptionPicker.contract";
 import { optionsApi } from "@/modules/options/options.api";
+import { salesTaxesApi } from "@/modules/taxes/taxes.api";
+import { salesTaxKeys } from "@/modules/taxes/taxes.queries";
+import {
+	TAX_PICKER_ROUTE,
+	TAX_SELECTED_IDS_KEY,
+	TAX_SELECTED_NAMES_KEY,
+	TAX_SELECTION_SOURCE_KEY,
+	TAX_EXEMPT_KEY,
+	DRAFT_ID_KEY as TAX_DRAFT_ID_KEY,
+	RETURN_TO_KEY as TAX_RETURN_TO_KEY,
+	buildTaxSelectionParams,
+	parseTaxSelectionParams,
+} from "@/modules/taxes/taxPicker.contract";
 
 const INVENTORY_THIS_ROUTE = "/(app)/(tabs)/inventory/products/create" as const;
 const INVENTORY_ADD_ITEMS_ROUTE = "/(app)/(tabs)/inventory/add-item" as const;
@@ -144,6 +157,7 @@ const COUNT_DISPLAY_ABBR = "pc";
 const DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
 const MONEY_SCALE = MONEY_INPUT_PRECISION;
 const MONEY_MAX_MINOR_DIGITS = 11;
+const FORM_VERTICAL_GAP = 12;
 
 // UDQI caps
 const HARD_QTY_CAP = 18;
@@ -461,6 +475,7 @@ export default function InventoryProductCreateScreen({
 
 	const categorySelection = useMemo(() => parseCategorySelectionParams(params as any), [params]);
 	const modifierSelection = useMemo(() => parseModifierSelectionParams(params as any), [params]);
+	const taxSelection = useMemo(() => parseTaxSelectionParams(params as any), [params]);
 
 	useEffect(() => {
 		if (!categorySelection.hasSelectionKey) return;
@@ -489,6 +504,24 @@ export default function InventoryProductCreateScreen({
 		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [modifierSelection.hasSelectionKey, modifierSelection.selectedModifierGroupIds.join("|")]);
+
+	useEffect(() => {
+		if (!taxSelection.hasSelectionKey) return;
+
+		patch({
+			selectedTaxIds: taxSelection.selectedTaxIds,
+			selectedTaxNames: taxSelection.selectedTaxNames,
+			taxExempt: taxSelection.taxExempt || taxSelection.selectedTaxIds.length === 0,
+		});
+
+		(router as any).setParams?.({
+			[TAX_SELECTED_IDS_KEY]: undefined,
+			[TAX_SELECTED_NAMES_KEY]: undefined,
+			[TAX_SELECTION_SOURCE_KEY]: undefined,
+			[TAX_EXEMPT_KEY]: undefined,
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [taxSelection.hasSelectionKey, taxSelection.selectedTaxIds.join("|"), taxSelection.selectedTaxNames.join("|")]);
 
 	/* ---------------- return params: unit (hardened) ---------------- */
 
@@ -707,6 +740,8 @@ export default function InventoryProductCreateScreen({
 		if ((draft.variations?.length ?? 0) > 0) return true;
 		if (hasValue(draft.categoryId) || hasValue(draft.categoryName)) return true;
 		if ((draft.modifierGroupIds?.length ?? 0) > 0) return true;
+		if ((draft.selectedTaxIds?.length ?? 0) > 0) return true;
+		if (draft.taxExempt) return true;
 		if (hasValue(draft.imageLocalUri)) return true;
 
 		if (effectiveUnitId && countUnit?.id && effectiveUnitId !== countUnit.id) return true;
@@ -724,8 +759,10 @@ export default function InventoryProductCreateScreen({
 		draft.modifierGroupIds,
 		draft.name,
 		draft.priceText,
+		draft.selectedTaxIds,
 		draft.selectedOptionSetIds,
 		draft.sku,
+		draft.taxExempt,
 		draft.variations,
 		effectiveUnitId,
 	]);
@@ -738,6 +775,12 @@ export default function InventoryProductCreateScreen({
 		return color || null;
 	}, [categoriesQuery.data?.items, draft.categoryId]);
 	const hasAvailableModifierGroups = (modifierGroupsQuery.data?.length ?? 0) > 0;
+	const selectedTaxCount = draft.selectedTaxIds.length;
+	const taxesHelperText = useMemo(() => {
+		if (draft.taxExempt || selectedTaxCount === 0) return "No tax applied";
+		if (selectedTaxCount === 1) return "1 tax applied";
+		return `${selectedTaxCount} taxes applied`;
+	}, [draft.taxExempt, selectedTaxCount]);
 
 	/* ---------------- navigation ---------------- */
 
@@ -804,6 +847,36 @@ export default function InventoryProductCreateScreen({
 		thisRoute,
 		toScopedRoute,
 		unitProductType,
+	]);
+
+	const openTaxEditor = useCallback(() => {
+		if (isUiDisabled) return;
+		if (!lockNav()) return;
+
+		router.replace({
+			pathname: toScopedRoute(TAX_PICKER_ROUTE) as any,
+			params: {
+				[TAX_RETURN_TO_KEY]: thisRoute,
+				[TAX_DRAFT_ID_KEY]: draftId,
+				...buildTaxSelectionParams({
+					selectedTaxIds: draft.selectedTaxIds,
+					selectedTaxNames: draft.selectedTaxNames,
+					selectionSource: draft.selectedTaxIds.length > 0 ? "existing" : "cleared",
+					taxExempt: draft.taxExempt,
+					draftId,
+				}),
+			} as any,
+		});
+	}, [
+		draft.selectedTaxIds,
+		draft.selectedTaxNames,
+		draft.taxExempt,
+		draftId,
+		isUiDisabled,
+		lockNav,
+		router,
+		thisRoute,
+		toScopedRoute,
 	]);
 
 	const openOptionsVariations = useCallback(() => {
@@ -977,6 +1050,13 @@ export default function InventoryProductCreateScreen({
 				const hasSelectedOptionSetsForSave = draft.selectedOptionSetIds.length > 0;
 				const hasCompleteOptionSelectionsForSave =
 					hasSelectedOptionSetsForSave && variationSelectionsForSave.length === draft.selectedOptionSetIds.length;
+				const selectedTaxIdsForSave = Array.from(
+					new Set(
+						(draft.taxExempt ? [] : draft.selectedTaxIds)
+							.map((taxId) => String(taxId ?? "").trim())
+							.filter(Boolean),
+					),
+				);
 
 				if (hasSelectedOptionSetsForSave && !hasCompleteOptionSelectionsForSave) {
 					setError("Complete option values before saving.");
@@ -1053,6 +1133,37 @@ export default function InventoryProductCreateScreen({
 								payload?.errorMessage ??
 								payload?.error?.message ??
 								"Item saved, but variations failed to sync. Tap save to retry.";
+							setError(String(message));
+							return;
+						}
+					}
+
+					if (selectedTaxIdsForSave.length > 0) {
+						try {
+							for (const taxId of selectedTaxIdsForSave) {
+								const tax = await salesTaxesApi.getById(taxId);
+								if (tax.archivedAt) continue;
+								const nextItemIds = Array.from(new Set([...(tax.itemIds ?? []), createdId]));
+								await salesTaxesApi.update(taxId, {
+									name: tax.name,
+									percentageText: String(tax.percentage),
+									enabled: tax.enabled,
+									applicationMode: "SELECT_ITEMS",
+									customAmounts: tax.customAmounts,
+									itemPricingMode: tax.itemPricingMode,
+									itemIds: nextItemIds,
+									serviceIds: tax.serviceIds ?? [],
+								});
+							}
+							await queryClient.invalidateQueries({ queryKey: salesTaxKeys.root });
+						} catch (e: any) {
+							const payload = e?.response?.data;
+							const message =
+								payload?.message ??
+								payload?.error ??
+								payload?.errorMessage ??
+								payload?.error?.message ??
+								"Item saved, but taxes failed to link. Tap save to retry.";
 							setError(String(message));
 							return;
 						}
@@ -1178,10 +1289,23 @@ export default function InventoryProductCreateScreen({
 	const stockOnHandValue = useMemo(() => formatStockOnHandDisplay(draft.initialOnHandText), [draft.initialOnHandText]);
 	const reorderPointValue = useMemo(() => formatStockOnHandDisplay(draft.reorderPointText), [draft.reorderPointText]);
 	const isMoneyKeyboardOpen = activeMoneyField !== null;
+	const [isSystemKeyboardOpen, setIsSystemKeyboardOpen] = useState(false);
+	const isAnyKeyboardOpen = isMoneyKeyboardOpen || isSystemKeyboardOpen;
 	const moneyKeyboardKey = useMemo(
 		() => `${draftId}:${currencyCode}:${activeMoneyField ?? "closed"}`,
 		[activeMoneyField, currencyCode, draftId],
 	);
+
+	useEffect(() => {
+		const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+		const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+		const showSub = Keyboard.addListener(showEvent, () => setIsSystemKeyboardOpen(true));
+		const hideSub = Keyboard.addListener(hideEvent, () => setIsSystemKeyboardOpen(false));
+		return () => {
+			showSub.remove();
+			hideSub.remove();
+		};
+	}, []);
 
 	const saveDisabled = isUiDisabled || !draft.name.trim() || !effectiveUnitId || hasIncompleteOptionSelection;
 
@@ -1234,130 +1358,175 @@ export default function InventoryProductCreateScreen({
 				}}
 			/>
 
-			<BAIScreen tabbed padded={false} safeTop={false} style={styles.root}>
+			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} safeAreaGradientBottom style={styles.root}>
 				<View style={[styles.screen, styles.scroll, { backgroundColor: theme.colors.background }]}>
-					<BAISurface style={[styles.card, { borderColor }]} padded={false}>
-						<ScrollView
-							style={styles.formScroll}
-							contentContainerStyle={styles.formContainer}
-							showsVerticalScrollIndicator={false}
-							showsHorizontalScrollIndicator={false}
-							keyboardShouldPersistTaps='handled'
-						>
-							<View style={styles.imageSection}>
-								<View style={styles.imageInlineRow}>
-									<View
-										style={[
-											styles.imagePreview,
-											{
-												borderColor,
-												backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-											},
-										]}
-									>
-										{hasLocalImage && tileMode === "IMAGE" ? (
-											<Image source={{ uri: localImageUri }} style={styles.imagePreviewImage} resizeMode='cover' />
-										) : hasColor ? (
-											<View style={[styles.imagePreviewImage, { backgroundColor: tileColor }]} />
-										) : shouldShowEmpty ? (
-											<View style={styles.imagePreviewEmpty}>
-												<FontAwesome6
-													name='image'
-													size={64}
-													color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-												/>
-												<BAIText variant='caption' muted>
-													No Photo
-												</BAIText>
-											</View>
-										) : null}
-										{shouldShowTileTextOverlay ? (
-											<PosTileTextOverlay label={displayTileLabel} name={itemName} textColor={tileLabelColor} />
-										) : null}
+					<ScrollView
+						style={styles.formScroll}
+						contentContainerStyle={styles.formContainer}
+						showsVerticalScrollIndicator={false}
+						showsHorizontalScrollIndicator={false}
+						keyboardShouldPersistTaps='handled'
+					>
+						<BAISurface style={[styles.sectionSurface, { borderColor }]} padded={false}>
+							<View style={styles.sectionContent}>
+								<View style={styles.imageSection}>
+									<View style={styles.imageInlineRow}>
+										<View
+											style={[
+												styles.imagePreview,
+												{
+													borderColor,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+											]}
+										>
+											{hasLocalImage && tileMode === "IMAGE" ? (
+												<Image source={{ uri: localImageUri }} style={styles.imagePreviewImage} resizeMode='cover' />
+											) : hasColor ? (
+												<View style={[styles.imagePreviewImage, { backgroundColor: tileColor }]} />
+											) : shouldShowEmpty ? (
+												<View style={styles.imagePreviewEmpty}>
+													<FontAwesome6
+														name='image'
+														size={64}
+														color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+													/>
+													<BAIText variant='caption' muted>
+														No Photo
+													</BAIText>
+												</View>
+											) : null}
+											{shouldShowTileTextOverlay ? (
+												<PosTileTextOverlay label={displayTileLabel} name={itemName} textColor={tileLabelColor} />
+											) : null}
+										</View>
+
+										<View style={styles.imageActionColumn}>
+											<BAIIconButton
+												variant='outlined'
+												size='lg'
+												icon='barcode-scan'
+												iconSize={44}
+												accessibilityLabel='Scan barcode'
+												onPress={onOpenBarcodeScanner}
+												disabled={isUiDisabled}
+												style={styles.barcodeIconButtonLarge}
+											/>
+											<BAIIconButton
+												variant='outlined'
+												size='md'
+												icon='camera'
+												iconSize={34}
+												accessibilityLabel='Edit image'
+												onPress={onEditPosTile}
+												disabled={isUiDisabled}
+												style={styles.imageEditButtonOutside}
+											/>
+										</View>
 									</View>
 
-									<View style={styles.imageActionColumn}>
-										<BAIIconButton
-											variant='outlined'
-											size='lg'
-											icon='barcode-scan'
-											iconSize={44}
-											accessibilityLabel='Scan barcode'
-											onPress={onOpenBarcodeScanner}
-											disabled={isUiDisabled}
-											style={styles.barcodeIconButtonLarge}
-										/>
-										<BAIIconButton
-											variant='outlined'
-											size='md'
-											icon='camera'
-											iconSize={34}
-											accessibilityLabel='Edit image'
-											onPress={onEditPosTile}
-											disabled={isUiDisabled}
-											style={styles.imageEditButtonOutside}
-										/>
-									</View>
+									{imageError ? (
+										<BAIText variant='caption' style={{ color: theme.colors.error }}>
+											{imageError}
+										</BAIText>
+									) : null}
 								</View>
 
-								{imageError ? (
-									<BAIText variant='caption' style={{ color: theme.colors.error }}>
-										{imageError}
-									</BAIText>
-								) : null}
+								<View style={styles.primaryDetailsStack}>
+									<BAITextInput
+										label='Name'
+										value={draft.name}
+										onChangeText={(t) => patch({ name: sanitizeProductNameDraftInput(t) })}
+										onFocus={dismissMoneyKeyboardIfOpen}
+										onBlur={() => {
+											if (isUiDisabled) return;
+											patch({ name: sanitizeProductNameInput(draft.name) });
+										}}
+										maxLength={FIELD_LIMITS.productName}
+										placeholder='e.g. Iced Latte'
+										disabled={isUiDisabled}
+										style={styles.noInputMargin}
+									/>
+
+									<BAITextInput
+										label='GTIN (Barcode)'
+										value={draft.barcode}
+										onChangeText={(t) => patch({ barcode: sanitizeGtinInput(t) })}
+										onFocus={dismissMoneyKeyboardIfOpen}
+										maxLength={GTIN_MAX_LENGTH}
+										placeholder='Scan or enter UPC / EAN / ISBN'
+										keyboardType='number-pad'
+										disabled={isUiDisabled}
+										style={styles.noInputMargin}
+									/>
+
+									<BAIPressableRow
+										label='Category'
+										value={draft.categoryName ? draft.categoryName : "None"}
+										showValueDot={Boolean(draft.categoryName?.trim())}
+										valueDotColor={selectedCategoryColor}
+										onPress={() => {
+											dismissMoneyKeyboardIfOpen();
+											openCategoryPicker();
+										}}
+										disabled={isUiDisabled}
+									/>
+
+									<Pressable
+										onPress={() => {
+											dismissMoneyKeyboardIfOpen();
+											openTaxEditor();
+										}}
+										disabled={isUiDisabled}
+										style={({ pressed }) => [
+											styles.taxInlineRow,
+											{ borderColor, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
+											pressed && !isUiDisabled ? styles.stockCardPressed : null,
+											isUiDisabled ? styles.stockCardDisabled : null,
+										]}
+									>
+										<View style={styles.taxInlineRowLeft}>
+											<BAIText variant='subtitle'>Taxes</BAIText>
+											<BAIText variant='caption' muted>
+												{taxesHelperText}
+											</BAIText>
+										</View>
+										<View style={styles.taxEditWrap}>
+											<BAIText variant='subtitle' style={styles.taxEditText}>
+												Edit
+											</BAIText>
+											<MaterialCommunityIcons
+												name='chevron-right'
+												size={24}
+												color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+											/>
+										</View>
+									</Pressable>
+
+									<BAITextarea
+										label='Description (optional)'
+										value={draft.description}
+										onChangeText={(t) => patch({ description: sanitizeDescriptionDraftInput(t) })}
+										onFocus={dismissMoneyKeyboardIfOpen}
+										onBlur={() => {
+											if (isUiDisabled) return;
+											patch({ description: sanitizeDescriptionInput(draft.description) });
+										}}
+										maxLength={FIELD_LIMITS.productDescription}
+										placeholder='Optional description…'
+										disabled={isUiDisabled}
+									/>
+								</View>
 							</View>
+						</BAISurface>
 
-							<BAITextInput
-								label='Name'
-								value={draft.name}
-								onChangeText={(t) => patch({ name: sanitizeProductNameDraftInput(t) })}
-								onFocus={dismissMoneyKeyboardIfOpen}
-								onBlur={() => {
-									if (isUiDisabled) return;
-									patch({ name: sanitizeProductNameInput(draft.name) });
-								}}
-								maxLength={FIELD_LIMITS.productName}
-								placeholder='e.g. Iced Latte'
-								disabled={isUiDisabled}
-							/>
-
-							<BAITextarea
-								label='Description (optional)'
-								value={draft.description}
-								onChangeText={(t) => patch({ description: sanitizeDescriptionDraftInput(t) })}
-								onFocus={dismissMoneyKeyboardIfOpen}
-								onBlur={() => {
-									if (isUiDisabled) return;
-									patch({ description: sanitizeDescriptionInput(draft.description) });
-								}}
-								maxLength={FIELD_LIMITS.productDescription}
-								placeholder='Optional description…'
-								disabled={isUiDisabled}
-							/>
-
-							<BAIPressableRow
-								label='Category'
-								value={draft.categoryName ? draft.categoryName : "None"}
-								showValueDot={Boolean(draft.categoryName?.trim())}
-								valueDotColor={selectedCategoryColor}
-								onPress={() => {
-									dismissMoneyKeyboardIfOpen();
-									openCategoryPicker();
-								}}
-								disabled={isUiDisabled}
-								style={{ marginTop: 10 }}
-							/>
-
-							<View style={{ height: 20 }} />
-							<View style={[styles.sectionTopDivider, { backgroundColor: borderColor }]} />
-							<View style={styles.optionsSection}>
-								<BAIText variant='subtitle' style={{ marginBottom: 8 }}>
-									{hasManualOnlyVariations ? "Variations" : "Options setup"}
-								</BAIText>
+						<BAISurface style={[styles.sectionSurface, { borderColor }]} padded={false}>
+							<View style={styles.sectionContent}>
+								<BAIText variant='subtitle'>{hasManualOnlyVariations ? "Variations" : "Options setup"}</BAIText>
 
 								{!hasManualOnlyVariations ? (
 									<>
-										<BAIText variant='body' style={{ marginBottom: 10, lineHeight: 28 }}>
+										<BAIText variant='body' style={styles.sectionHelperText}>
 											Add a custom set of options to an item to create variations. For example, a size option set
 											creates variations small, medium, and large.
 										</BAIText>
@@ -1370,7 +1539,6 @@ export default function InventoryProductCreateScreen({
 												openOptionsVariations();
 											}}
 											disabled={isUiDisabled || !effectiveUnitId}
-											style={{ marginBottom: 8 }}
 										>
 											{optionsVariationCta}
 										</BAIButton>
@@ -1397,17 +1565,14 @@ export default function InventoryProductCreateScreen({
 										) : null}
 									</>
 								) : (
-									<BAIText variant='caption' muted style={{ marginBottom: 8 }}>
+									<BAIText variant='caption' muted>
 										Options are hidden while manual variations are active.
 									</BAIText>
 								)}
 
 								{sortedVariations.length > 0 ? (
 									<>
-										<View style={{ height: 12 }} />
-										<BAIText variant='subtitle' style={{ marginBottom: 8 }}>
-											Variations
-										</BAIText>
+										<BAIText variant='subtitle'>Variations</BAIText>
 										<View style={styles.variationRowsWrap}>
 											{sortedVariations.map((variation) => (
 												<Pressable
@@ -1444,229 +1609,214 @@ export default function InventoryProductCreateScreen({
 									</>
 								) : null}
 							</View>
+						</BAISurface>
 
-							<View style={{ height: 20 }} />
-							<View style={[styles.sectionTopDivider, { backgroundColor: borderColor }]} />
-							<View style={styles.inventorySection}>
-								<BAIText variant='subtitle' style={{ marginBottom: 8 }}>
-									Price and Inventory
-								</BAIText>
+						<BAISurface style={[styles.sectionSurface, { borderColor }]} padded={false}>
+							<View style={styles.sectionContent}>
+								<BAIText variant='subtitle'>Price and Inventory</BAIText>
 
-								<BAITextInput
-									label='SKU is auto-generated if left blank'
-									value={draft.sku}
-									onChangeText={(t) => patch({ sku: sanitizeSkuInput(t) })}
-									onFocus={dismissMoneyKeyboardIfOpen}
-									maxLength={FIELD_LIMITS.sku}
-									placeholder='Optional'
-									disabled={isUiDisabled}
-								/>
-
-								<BAITextInput
-									label='GTIN (Barcode)'
-									value={draft.barcode}
-									onChangeText={(t) => patch({ barcode: sanitizeGtinInput(t) })}
-									onFocus={dismissMoneyKeyboardIfOpen}
-									maxLength={GTIN_MAX_LENGTH}
-									placeholder='Scan or enter UPC / EAN / ISBN'
-									keyboardType='number-pad'
-									disabled={isUiDisabled}
-									style={{ marginTop: 4 }}
-								/>
-
-								<BAIPressableRow
-									label='Unit'
-									value={unitValueText}
-									onPress={() => {
-										dismissMoneyKeyboardIfOpen();
-										openUnitPicker();
-									}}
-									disabled={isUiDisabled}
-									style={{ marginTop: 10 }}
-								/>
-
-								{!effectiveUnitId ? (
-									<BAIText variant='caption' muted>
-										Select a unit to continue.
-									</BAIText>
-								) : null}
-
-								<View style={{ height: 8 }} />
-
-								<BAITextInput
-									ref={priceInputRef}
-									label='Price'
-									value={priceInputDisplay}
-									placeholder={formatMoneyFromMinor({ minorUnits: 0, currencyCode, scale: MONEY_SCALE })}
-									showSoftInputOnFocus={false}
-									contextMenuHidden
-									caretHidden={false}
-									onFocus={() => openMoneyKeyboard("price")}
-									selection={{ start: priceInputDisplay.length, end: priceInputDisplay.length }}
-									disabled={isUiDisabled}
-								/>
-
-								<View style={{ height: 0 }} />
-
-								<BAITextInput
-									ref={costInputRef}
-									label='Cost (optional)'
-									value={costInputDisplay}
-									placeholder={formatMoneyFromMinor({ minorUnits: 0, currencyCode, scale: MONEY_SCALE })}
-									showSoftInputOnFocus={false}
-									contextMenuHidden
-									caretHidden={false}
-									onFocus={() => openMoneyKeyboard("cost")}
-									selection={{ start: costInputDisplay.length, end: costInputDisplay.length }}
-									disabled={isUiDisabled}
-								/>
-
-								<View style={{ height: 10 }} />
-
-								<Pressable
-									onPress={() => {
-										dismissMoneyKeyboardIfOpen();
-										openManageStock();
-									}}
-									disabled={isUiDisabled}
-									style={({ pressed }) => [
-										styles.stockCard,
-										{
-											borderColor,
-											backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-										},
-										pressed && !isUiDisabled ? styles.stockCardPressed : null,
-										isUiDisabled ? styles.stockCardDisabled : null,
-									]}
-								>
-									<View style={styles.stockCardText}>
-										<BAIText variant='caption' muted>
-											Stock on hand
-										</BAIText>
-										<BAIText variant='subtitle'>{stockOnHandValue || "None"}</BAIText>
-										<BAIText variant='caption' muted style={styles.stockCardMeta}>
-											Reorder point: {reorderPointValue || "None"}
-										</BAIText>
-									</View>
-									<View style={styles.stockCardActionWrap}>
-										<BAIText variant='subtitle' style={styles.stockCardAction}>
-											Manage Stock
-										</BAIText>
-										<MaterialCommunityIcons
-											name='chevron-right'
-											size={24}
-											color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-										/>
-									</View>
-								</Pressable>
-
-								<View style={{ height: 10 }} />
-								{hasIncompleteOptionSelection ? (
-									<BAIText variant='caption' muted style={{ marginBottom: 8 }}>
-										Select at least one value in each option set to create variations.
-									</BAIText>
-								) : null}
-								<BAIButton
-									variant='solid'
-									shape='default'
-									onPress={() => {
-										dismissMoneyKeyboardIfOpen();
-										if (!canCreateVariations) {
-											return;
-										}
-										if (variationCount > 0) {
-											openAddVariation();
-											return;
-										}
-										openCreateVariations();
-									}}
-									disabled={isUiDisabled || !effectiveUnitId || !canCreateVariations}
-								>
-									{createVariationCta}
-								</BAIButton>
-							</View>
-
-							{routeScope === "inventory" ? (
-								<>
-									<View style={{ height: 20 }} />
-									<View style={[styles.sectionTopDivider, { backgroundColor: borderColor }]} />
-									<View style={styles.modifiersSection}>
-										<BAIText variant='subtitle' style={{ marginBottom: 8 }}>
-											Modifiers
-										</BAIText>
-
-										<ModifierGroupSelector
-											selectedIds={draft.modifierGroupIds}
-											onChange={(modifierGroupIds) => patch({ modifierGroupIds })}
+								<View style={styles.priceInventoryStack}>
+									<View style={styles.priceInventoryFieldsStack}>
+										<BAITextInput
+											label='SKU is auto-generated if left blank'
+											value={draft.sku}
+											onChangeText={(t) => patch({ sku: sanitizeSkuInput(t) })}
+											onFocus={dismissMoneyKeyboardIfOpen}
+											maxLength={FIELD_LIMITS.sku}
+											placeholder='Optional'
 											disabled={isUiDisabled}
-											showHeader={false}
-											useContainer={false}
-											showRowDividers
-											emptyMode='hidden'
-											groups={modifierGroupsQuery.data}
-											isLoading={modifierGroupsQuery.isLoading}
-											isError={modifierGroupsQuery.isError}
-											style={{ marginBottom: 10 }}
+											style={styles.noInputMargin}
 										/>
 
-										{!hasAvailableModifierGroups && !modifierGroupsQuery.isLoading && !modifierGroupsQuery.isError ? (
-											<>
-												<BAIText variant='body' style={styles.modifiersHelperText}>
-													Add a custom set of modifiers to customize this item at checkout, such as toppings, add-ons,
-													or special requests.
-												</BAIText>
-												<BAIButton
-													variant='subtle'
-													intent='neutral'
-													shape='default'
-													onPress={() => {
-														dismissMoneyKeyboardIfOpen();
-														openCreateModifierSet();
-													}}
-													disabled={isUiDisabled}
-													style={styles.modifiersCreateButton}
-												>
-													Create Modifier Set
-												</BAIButton>
-											</>
+										<BAIPressableRow
+											label='Unit'
+											value={unitValueText}
+											onPress={() => {
+												dismissMoneyKeyboardIfOpen();
+												openUnitPicker();
+											}}
+											disabled={isUiDisabled}
+										/>
+
+										{!effectiveUnitId ? (
+											<BAIText variant='caption' muted style={styles.priceInventoryHintText}>
+												Select a unit to continue.
+											</BAIText>
 										) : null}
 
-										<View style={[styles.sectionBottomDivider, { backgroundColor: borderColor }]} />
+										<BAITextInput
+											ref={priceInputRef}
+											label='Price'
+											value={priceInputDisplay}
+											placeholder={formatMoneyFromMinor({ minorUnits: 0, currencyCode, scale: MONEY_SCALE })}
+											showSoftInputOnFocus={false}
+											contextMenuHidden
+											caretHidden={false}
+											onFocus={() => openMoneyKeyboard("price")}
+											selection={{ start: priceInputDisplay.length, end: priceInputDisplay.length }}
+											disabled={isUiDisabled}
+											style={styles.noInputMargin}
+										/>
+
+										<BAITextInput
+											ref={costInputRef}
+											label='Cost (optional)'
+											value={costInputDisplay}
+											placeholder={formatMoneyFromMinor({ minorUnits: 0, currencyCode, scale: MONEY_SCALE })}
+											showSoftInputOnFocus={false}
+											contextMenuHidden
+											caretHidden={false}
+											onFocus={() => openMoneyKeyboard("cost")}
+											selection={{ start: costInputDisplay.length, end: costInputDisplay.length }}
+											disabled={isUiDisabled}
+											style={styles.noInputMargin}
+										/>
 									</View>
-								</>
-							) : null}
 
-							<View style={{ height: 6 }} />
+									<View style={styles.priceInventoryActionsStack}>
+										<Pressable
+											onPress={() => {
+												dismissMoneyKeyboardIfOpen();
+												openManageStock();
+											}}
+											disabled={isUiDisabled}
+											style={({ pressed }) => [
+												styles.stockCard,
+												{
+													borderColor,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+												pressed && !isUiDisabled ? styles.stockCardPressed : null,
+												isUiDisabled ? styles.stockCardDisabled : null,
+											]}
+										>
+											<View style={styles.stockCardText}>
+												<BAIText variant='caption' muted>
+													Stock on hand
+												</BAIText>
+												<BAIText variant='subtitle'>{stockOnHandValue || "None"}</BAIText>
+												<BAIText variant='caption' muted style={styles.stockCardMeta}>
+													Reorder point: {reorderPointValue || "None"}
+												</BAIText>
+											</View>
+											<View style={styles.stockCardActionWrap}>
+												<BAIText variant='subtitle' style={styles.stockCardAction}>
+													Manage Stock
+												</BAIText>
+												<MaterialCommunityIcons
+													name='chevron-right'
+													size={24}
+													color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+												/>
+											</View>
+										</Pressable>
 
-							{error ? (
-								<BAIText variant='caption' style={{ color: theme.colors.error }}>
-									{error}
-								</BAIText>
-							) : null}
+										{hasIncompleteOptionSelection ? (
+											<BAIText variant='caption' muted style={styles.priceInventoryHintText}>
+												Select at least one value in each option set to create variations.
+											</BAIText>
+										) : null}
 
-							<View style={[styles.actions, isMoneyKeyboardOpen ? styles.actionsKeyboardOpen : null]}>
-								<BAICTAPillButton
-									intent='primary'
-									variant='solid'
-									onPress={() => onSave("detail")}
-									disabled={saveDisabled}
-									style={{ flex: 1 }}
-								>
-									Save
-								</BAICTAPillButton>
-
-								<BAICTAPillButton
-									variant='solid'
-									onPress={onSaveAndAddAnother}
-									disabled={saveDisabled}
-									style={{ flex: 1 }}
-									intent='primary'
-								>
-									Save & Another
-								</BAICTAPillButton>
+										<BAIButton
+											variant='solid'
+											shape='default'
+											onPress={() => {
+												dismissMoneyKeyboardIfOpen();
+												if (!canCreateVariations) {
+													return;
+												}
+												if (variationCount > 0) {
+													openAddVariation();
+													return;
+												}
+												openCreateVariations();
+											}}
+											disabled={isUiDisabled || !effectiveUnitId || !canCreateVariations}
+										>
+											{createVariationCta}
+										</BAIButton>
+									</View>
+								</View>
 							</View>
-						</ScrollView>
-					</BAISurface>
+						</BAISurface>
+
+						{routeScope === "inventory" ? (
+							<BAISurface style={[styles.sectionSurface, { borderColor }]} padded={false}>
+								<View style={styles.sectionContent}>
+									<BAIText variant='subtitle'>Modifiers</BAIText>
+
+									<ModifierGroupSelector
+										selectedIds={draft.modifierGroupIds}
+										onChange={(modifierGroupIds) => patch({ modifierGroupIds })}
+										disabled={isUiDisabled}
+										showHeader={false}
+										useContainer={false}
+										showRowDividers
+										emptyMode='hidden'
+										groups={modifierGroupsQuery.data}
+										isLoading={modifierGroupsQuery.isLoading}
+										isError={modifierGroupsQuery.isError}
+									/>
+
+									{!hasAvailableModifierGroups && !modifierGroupsQuery.isLoading && !modifierGroupsQuery.isError ? (
+										<>
+											<BAIText variant='body' style={styles.modifiersHelperText}>
+												Add a custom set of modifiers to customize this item at checkout, such as toppings, add-ons,
+												or special requests.
+											</BAIText>
+											<BAIButton
+												variant='subtle'
+												intent='neutral'
+												shape='default'
+												onPress={() => {
+													dismissMoneyKeyboardIfOpen();
+													openCreateModifierSet();
+												}}
+												disabled={isUiDisabled}
+											>
+												Create Modifier Set
+											</BAIButton>
+										</>
+									) : null}
+								</View>
+							</BAISurface>
+						) : null}
+
+						{error ? (
+							<BAIText variant='caption' style={{ color: theme.colors.error }}>
+								{error}
+							</BAIText>
+						) : null}
+
+						<BAISurface style={[styles.sectionSurface, styles.actionsSection, { borderColor }]} padded={false}>
+							<View style={styles.actionsContainer}>
+								<BAIText variant='caption' muted style={styles.actionsHelperText}>
+									Use Save to keep this item, or Save & Another to save and continue adding the next item.
+								</BAIText>
+								<View style={[styles.actions, isAnyKeyboardOpen ? styles.actionsKeyboardOpen : null]}>
+									<BAICTAPillButton
+										intent='primary'
+										variant='solid'
+										onPress={() => onSave("detail")}
+										disabled={saveDisabled}
+										style={{ flex: 1 }}
+									>
+										Save
+									</BAICTAPillButton>
+
+									<BAICTAPillButton
+										variant='solid'
+										onPress={onSaveAndAddAnother}
+										disabled={saveDisabled}
+										style={{ flex: 1 }}
+										intent='primary'
+									>
+										Save & Another
+									</BAICTAPillButton>
+								</View>
+							</View>
+						</BAISurface>
+					</ScrollView>
 				</View>
 			</BAIScreen>
 
@@ -1696,33 +1846,73 @@ export default function InventoryProductCreateScreen({
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 10, paddingBottom: 0 },
+	screen: { flex: 1, paddingHorizontal: 12, paddingBottom: 0 },
 	scroll: { flex: 1 },
-	card: {
-		flex: 1,
-		minHeight: 0,
-		alignSelf: "stretch",
-		marginBottom: 8,
-		borderWidth: 1,
-		borderRadius: 24,
-		gap: 4,
-		paddingHorizontal: 0,
-		paddingTop: 10,
-		paddingBottom: 12,
-	},
 	formScroll: {
 		flex: 1,
 	},
+	noInputMargin: {
+		marginBottom: 0,
+	},
 	formContainer: {
 		flexGrow: 1,
+		paddingTop: 8,
+		paddingBottom: 8,
+		gap: FORM_VERTICAL_GAP,
+	},
+	sectionSurface: {
+		borderWidth: 1,
+		borderRadius: 18,
+	},
+	sectionContent: {
 		paddingHorizontal: 12,
-		paddingBottom: 0,
+		paddingVertical: 12,
+		gap: FORM_VERTICAL_GAP,
+	},
+	sectionHelperText: {
+		lineHeight: 24,
+	},
+	taxInlineRow: {
+		marginTop: 0,
+		borderWidth: 1,
+		borderRadius: 12,
+		paddingHorizontal: 12,
+		paddingVertical: 12,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: FORM_VERTICAL_GAP,
+	},
+	taxInlineRowLeft: {
+		flex: 1,
+		minWidth: 0,
+		gap: 2,
+	},
+	taxEditWrap: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
+	},
+	taxEditText: {
+		textDecorationLine: "none",
+	},
+	actionsSection: {
+		marginBottom: 200,
+	},
+	actionsContainer: {
+		paddingHorizontal: 12,
+		paddingTop: 12,
+		paddingBottom: 12,
+		gap: FORM_VERTICAL_GAP,
+	},
+	actionsHelperText: {
+		lineHeight: 20,
 	},
 	imageSection: {
 		alignItems: "center",
-		gap: 8,
-		marginBottom: 12,
-		marginTop: 4,
+		gap: 12,
+		marginBottom: 0,
+		marginTop: 0,
 	},
 	imagePreview: {
 		width: 180,
@@ -1802,6 +1992,9 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		gap: 20,
 	},
+	primaryDetailsStack: {
+		gap: FORM_VERTICAL_GAP,
+	},
 	barcodeIconButtonLarge: {
 		width: 84,
 		height: 84,
@@ -1814,49 +2007,52 @@ const styles = StyleSheet.create({
 	},
 	actions: {
 		flexDirection: "row",
-		gap: 10,
-		marginTop: 16,
-		marginBottom: 8,
+		gap: FORM_VERTICAL_GAP,
+		marginTop: 0,
+		marginBottom: 0,
 	},
 	actionsKeyboardOpen: {
-		marginBottom: 250,
-	},
-	sectionTopDivider: {
-		height: 4,
-	},
-	optionsSection: {
-		marginTop: 10,
+		marginBottom: 200,
 	},
 	optionSummaryWrap: {
-		gap: 8,
+		gap: FORM_VERTICAL_GAP,
 	},
 	optionSummaryRow: {
 		paddingHorizontal: 12,
-		paddingVertical: 10,
+		paddingVertical: 12,
 		borderWidth: 1,
 		borderRadius: 12,
 		gap: 2,
 	},
 	variationRowsWrap: {
-		gap: 8,
+		gap: FORM_VERTICAL_GAP,
 	},
 	variationRow: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 		paddingHorizontal: 12,
-		paddingVertical: 10,
+		paddingVertical: 12,
 		borderWidth: 1,
 		borderRadius: 12,
-		gap: 12,
+		gap: FORM_VERTICAL_GAP,
 	},
 	variationRowText: {
 		flex: 1,
 		minWidth: 0,
 		gap: 2,
 	},
-	inventorySection: {
-		marginTop: 10,
+	priceInventoryStack: {
+		gap: FORM_VERTICAL_GAP,
+	},
+	priceInventoryFieldsStack: {
+		gap: FORM_VERTICAL_GAP,
+	},
+	priceInventoryActionsStack: {
+		gap: FORM_VERTICAL_GAP,
+	},
+	priceInventoryHintText: {
+		lineHeight: 20,
 	},
 	stockCard: {
 		flexDirection: "row",
@@ -1890,18 +2086,7 @@ const styles = StyleSheet.create({
 	stockCardAction: {
 		fontWeight: "400",
 	},
-	modifiersSection: {
-		marginTop: 10,
-	},
 	modifiersHelperText: {
-		marginBottom: 10,
-		lineHeight: 28,
-	},
-	modifiersCreateButton: {
-		marginBottom: 10,
-	},
-	sectionBottomDivider: {
-		height: 4,
-		marginTop: 10,
+		lineHeight: 24,
 	},
 });

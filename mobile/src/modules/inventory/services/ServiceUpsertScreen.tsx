@@ -1225,7 +1225,7 @@ const styles = StyleSheet.create({
 	formContainer: {
 		paddingHorizontal: 14,
 		paddingBottom: 250,
-		gap: 10,
+		gap: 12,
 	},
 	formTextInput: {
 		marginBottom: 0,
@@ -1241,9 +1241,9 @@ const styles = StyleSheet.create({
 	imageSection: {
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 10,
+		gap: 12,
 		marginBottom: 0,
-		marginTop: 6,
+		marginTop: 0,
 	},
 	imagePreview: {
 		width: 180,
@@ -1330,11 +1330,11 @@ const styles = StyleSheet.create({
 	},
 	actions: {
 		flexDirection: "row",
-		gap: 10,
-		marginTop: 16,
+		gap: 12,
+		marginTop: 12,
 	},
 	saveAnotherButton: {
-		marginTop: 14,
+		marginTop: 12,
 	},
 	actionButton: { flex: 1 },
 });

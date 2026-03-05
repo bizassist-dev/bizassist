@@ -22,6 +22,7 @@ type Props = {
 	title?: string;
 	countLabel?: string;
 	showBorder?: boolean;
+	surface?: boolean;
 
 	isLoading?: boolean;
 	isFetching?: boolean; // kept for backward-compat; no longer rendered as a badge in the header
@@ -46,6 +47,7 @@ export function InventoryListShell(props: Props) {
 	const {
 		title,
 		showBorder = true,
+		surface = true,
 
 		isLoading,
 		// isFetching, // intentionally unused (badge removed)
@@ -73,77 +75,87 @@ export function InventoryListShell(props: Props) {
 	const showEmpty = !isLoading && !isError && !!emptyTitle;
 	const showError = !!isError;
 	const showHeader = !!title;
+	const rootStyle = [
+		surface ? styles.shell : styles.shellPlain,
+		showBorder ? { borderColor } : styles.shellBorderless,
+		containerStyle,
+	];
+	const clipStyle = [surface ? styles.clip : styles.clipPlain];
+	const content = (
+		<View style={clipStyle}>
+			{showHeader ? (
+				<View style={styles.header}>
+					<View style={styles.headerLeft}>
+						<BAIText variant='subtitle'>{title}</BAIText>
+
+						{/* ✅ Count label removed for Items/Services by not passing countLabel from screen.
+						    Component remains generic: if another screen wants it, it can still pass it. */}
+					</View>
+
+					{/* ✅ Synced badge removed entirely */}
+				</View>
+			) : null}
+
+			{topContent ? (
+				<View style={[styles.headerContent, { borderBottomColor: borderColor }]}>{topContent}</View>
+			) : null}
+
+			<View style={styles.body}>
+				{isLoading ? (
+					<View style={styles.center}>
+						<BAIActivityIndicator size='small' />
+						<BAIText variant='body' muted style={{ marginTop: 10 }}>
+							Loading…
+						</BAIText>
+					</View>
+				) : showError ? (
+					<View style={styles.center}>
+						<BAIText variant='body'>Something went wrong.</BAIText>
+						{onRetry ? (
+							<View style={{ marginTop: 12 }}>
+								<BAIRetryButton variant='outline' mode='contained' onPress={onRetry}>
+									Retry
+								</BAIRetryButton>
+							</View>
+						) : null}
+					</View>
+				) : showEmpty ? (
+					<View style={styles.empty}>
+						<BAIText variant='subtitle' style={{ textAlign: "center" }}>
+							{emptyTitle}
+						</BAIText>
+
+						{emptyBody ? (
+							<BAIText variant='body' muted style={{ textAlign: "center", marginTop: 6 }}>
+								{emptyBody}
+							</BAIText>
+						) : null}
+
+						{showPrimaryEmptyCta && primaryEmptyCtaLabel && onPrimaryEmptyCta ? (
+							<View style={{ marginTop: 14 }}>
+								<BAIEmptyStateButton
+									mode='contained'
+									onPress={onPrimaryEmptyCta}
+									label={primaryEmptyCtaLabel}
+									shape={primaryEmptyCtaShape}
+								/>
+							</View>
+						) : null}
+					</View>
+				) : (
+					children
+				)}
+			</View>
+		</View>
+	);
+
+	if (!surface) {
+		return <View style={rootStyle}>{content}</View>;
+	}
 
 	return (
-		<BAISurface
-			style={[styles.shell, showBorder ? { borderColor } : styles.shellBorderless, containerStyle]}
-			padded={false}
-		>
-			<View style={styles.clip}>
-				{showHeader ? (
-					<View style={styles.header}>
-						<View style={styles.headerLeft}>
-							<BAIText variant='subtitle'>{title}</BAIText>
-
-							{/* ✅ Count label removed for Items/Services by not passing countLabel from screen.
-							    Component remains generic: if another screen wants it, it can still pass it. */}
-						</View>
-
-						{/* ✅ Synced badge removed entirely */}
-					</View>
-				) : null}
-
-				{topContent ? (
-					<View style={[styles.headerContent, { borderBottomColor: borderColor }]}>{topContent}</View>
-				) : null}
-
-				<View style={styles.body}>
-					{isLoading ? (
-						<View style={styles.center}>
-							<BAIActivityIndicator size='small' />
-							<BAIText variant='body' muted style={{ marginTop: 10 }}>
-								Loading…
-							</BAIText>
-						</View>
-					) : showError ? (
-						<View style={styles.center}>
-							<BAIText variant='body'>Something went wrong.</BAIText>
-							{onRetry ? (
-								<View style={{ marginTop: 12 }}>
-									<BAIRetryButton variant='outline' mode='contained' onPress={onRetry}>
-										Retry
-									</BAIRetryButton>
-								</View>
-							) : null}
-						</View>
-					) : showEmpty ? (
-						<View style={styles.empty}>
-							<BAIText variant='subtitle' style={{ textAlign: "center" }}>
-								{emptyTitle}
-							</BAIText>
-
-							{emptyBody ? (
-								<BAIText variant='body' muted style={{ textAlign: "center", marginTop: 6 }}>
-									{emptyBody}
-								</BAIText>
-							) : null}
-
-							{showPrimaryEmptyCta && primaryEmptyCtaLabel && onPrimaryEmptyCta ? (
-								<View style={{ marginTop: 14 }}>
-									<BAIEmptyStateButton
-										mode='contained'
-										onPress={onPrimaryEmptyCta}
-										label={primaryEmptyCtaLabel}
-										shape={primaryEmptyCtaShape}
-									/>
-								</View>
-							) : null}
-						</View>
-					) : (
-						children
-					)}
-				</View>
-			</View>
+		<BAISurface style={rootStyle} padded={false}>
+			{content}
 		</BAISurface>
 	);
 }
@@ -154,6 +166,12 @@ const styles = StyleSheet.create({
 		borderWidth: StyleSheet.hairlineWidth,
 		borderRadius: 16,
 	},
+	shellPlain: {
+		flex: 1,
+		minHeight: 0,
+		borderWidth: 0,
+		borderRadius: 0,
+	},
 	shellBorderless: {
 		borderWidth: 0,
 	},
@@ -161,6 +179,11 @@ const styles = StyleSheet.create({
 	clip: {
 		flex: 1,
 		borderRadius: 16,
+		overflow: "hidden",
+	},
+	clipPlain: {
+		flex: 1,
+		minHeight: 0,
 		overflow: "hidden",
 	},
 

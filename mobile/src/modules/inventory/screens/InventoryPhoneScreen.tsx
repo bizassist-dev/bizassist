@@ -10,6 +10,30 @@
 // - Keep server search (q) and apply tab filtering client-side
 // - Preserve kiss layout, keyboard avoidance + dismissal
 // - Use SearchBar inline clear affordance (no extra “Clear Search” row)
+// - Scrollable Screen Layout Governance: keep one vertical scroll owner (FlatList)
+//   behind a minHeight:0 flex chain from BAIScreen -> governed scroll area -> list.
+//
+// Capability Alignment
+// Capability:
+// - Catalog Management
+// - Inventory Management
+// Sub Capability:
+// - Item Management
+// - Service Management
+// - Inventory Activity
+// Owner Surface:
+// - mobile/app/(app)/(tabs)/inventory/inventory.phone.tsx
+// - mobile/src/modules/inventory/screens/InventoryPhoneScreen.tsx
+// Domain Entities:
+// - Product
+// - Category
+// - Unit
+// - InventoryMovement
+// System Invariants:
+// - archive-only lifecycle (no hard delete)
+// - business scoping required for all queries and mutations
+// - stock-health filters are applied to active, inventory-tracked items only
+// - this list screen is read model + navigation shell; stock mutations occur in dedicated ledger flows
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -17,24 +41,23 @@ import {
 	StyleSheet,
 	FlatList,
 	RefreshControl,
-	KeyboardAvoidingView,
 	Platform,
-	Keyboard,
-	TouchableWithoutFeedback,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { BAIScreen } from "@/components/ui/BAIScreen";
+import { BAIGovernedScrollableLayout } from "@/components/ui/BAIGovernedScrollableLayout";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
 import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIEmptyStateButton } from "@/components/ui/BAIEmptyStateButton";
+import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIGroupTabs, type BAIGroupTab } from "@/components/ui/BAIGroupTabs";
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 
 import { InventorySearchBar } from "@/modules/inventory/components/InventorySearchBar";
-import { InventoryListShell } from "@/modules/inventory/components/InventoryListShell";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
@@ -508,59 +531,8 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 		[activeAllCount, healthCounts.inStock, healthCounts.low, healthCounts.out],
 	);
 
-	const list =
-		filteredItems.length === 0 ? null : (
-			<FlatList
-				data={filteredItems}
-				keyExtractor={(p) => p.id}
-				contentContainerStyle={styles.listContent}
-				style={styles.list}
-				showsVerticalScrollIndicator={false}
-				showsHorizontalScrollIndicator={false}
-				refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
-				renderItem={({ item }) => {
-					const categoryId = item.category?.id ?? (item as any).categoryId ?? "";
-					const categoryMeta = categoryId && categoryMetaById.has(categoryId) ? categoryMetaById.get(categoryId) : null;
-					const categoryIsActive = categoryMeta?.isActive ?? item.category?.isActive ?? undefined;
-					const categoryColor = categoryMeta?.color ?? item.category?.color ?? null;
-
-					const { precisionScale, display } = formatOnHandDisplay(item, unitsById);
-
-					const rowItem: InventoryProduct = {
-						...item,
-						unitPrecisionScale: precisionScale,
-						onHandCachedRaw: display,
-					};
-
-					return (
-						<InventoryRow
-							item={rowItem}
-							categoryIsActive={categoryIsActive}
-							categoryColor={categoryColor}
-							showOnHandUnit={false}
-							onPress={() => {
-								const isSvc = isService(item);
-								const base = isSvc ? "/(app)/(tabs)/inventory/services/" : "/(app)/(tabs)/inventory/products/";
-								safePush(router, toScopedRoute(`${base}${encodeURIComponent(item.id)}`));
-							}}
-							disabled={!canNavigate}
-						/>
-					);
-				}}
-				ItemSeparatorComponent={() => <View style={styles.itemGap} />}
-				keyboardShouldPersistTaps='handled'
-				keyboardDismissMode={Platform.OS === "ios" ? "on-drag" : "none"}
-				onEndReached={onEndReached}
-				onEndReachedThreshold={0.4}
-				ListFooterComponent={
-					productsQuery.isFetchingNextPage ? (
-						<View style={styles.loadMoreFooter}>
-							<BAIActivityIndicator size='small' />
-						</View>
-					) : null
-				}
-			/>
-		);
+	const isInitialLoading = productsQuery.isLoading && allItems.length === 0;
+	const isInitialError = !!productsQuery.isError && allItems.length === 0;
 
 	const emptyTitle =
 		statusTabValue === "ARCHIVED"
@@ -588,7 +560,42 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 						? "Create Your First Service To Start Selling Time-Based Work."
 						: "Add Your First Item To Begin Tracking Inventory.";
 
-	const keyboardVerticalOffset = Platform.OS === "ios" ? 8 : 0;
+	const showPrimaryEmptyCta =
+		statusTabValue === "ACTIVE" && !isSearching && !hasActiveFilter && filteredItems.length === 0 && !productsQuery.isError;
+
+	const renderInventoryRow = useCallback(
+		({ item }: { item: InventoryProduct }) => {
+			const categoryId = item.category?.id ?? (item as any).categoryId ?? "";
+			const categoryMeta = categoryId && categoryMetaById.has(categoryId) ? categoryMetaById.get(categoryId) : null;
+			const categoryIsActive = categoryMeta?.isActive ?? item.category?.isActive ?? undefined;
+			const categoryColor = categoryMeta?.color ?? item.category?.color ?? null;
+
+			const { precisionScale, display } = formatOnHandDisplay(item, unitsById);
+
+			const rowItem: InventoryProduct = {
+				...item,
+				unitPrecisionScale: precisionScale,
+				onHandCachedRaw: display,
+			};
+
+			return (
+				<InventoryRow
+					item={rowItem}
+					categoryIsActive={categoryIsActive}
+					categoryColor={categoryColor}
+					showOnHandUnit={false}
+					onPress={() => {
+						const isSvc = isService(item);
+						const base = isSvc ? "/(app)/(tabs)/inventory/services/" : "/(app)/(tabs)/inventory/products/";
+						safePush(router, toScopedRoute(`${base}${encodeURIComponent(item.id)}`));
+					}}
+					disabled={!canNavigate}
+				/>
+			);
+		},
+		[canNavigate, categoryMetaById, router, safePush, toScopedRoute, unitsById],
+	);
+
 	const syncLabel = productsQuery.isFetching ? "Syncing…" : "Synced";
 	const createRoute = useMemo(() => {
 		if (routeScope === "settings-items-services") {
@@ -603,15 +610,18 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	}, [createRoute, router, safePush]);
 
 	return (
-		<BAIScreen tabbed padded={false} safeTop={routeScope !== "settings-items-services"} style={styles.root}>
-			<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-				<KeyboardAvoidingView
-					style={styles.kav}
-					behavior={Platform.OS === "ios" ? "padding" : "height"}
-					keyboardVerticalOffset={keyboardVerticalOffset}
-				>
-					<View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-						<BAISurface style={styles.inventoryContainer} padded>
+		<BAIScreen
+			tabbed
+			padded={false}
+			safeTop={routeScope !== "settings-items-services"}
+			safeBottom={false}
+			safeAreaGradientBottom
+			style={styles.root}
+		>
+			<View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+				<BAIGovernedScrollableLayout
+					top={
+						<View style={styles.fixedTopZone}>
 							<View style={styles.heroRow}>
 								<View style={styles.heroLeft}>
 									<View style={styles.titleRow}>
@@ -651,116 +661,157 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 								disabled={false}
 							/>
 
-							<View style={styles.shellWrap}>
-								<InventoryListShell
-									showBorder={false}
-									isLoading={productsQuery.isLoading}
-									isFetching={productsQuery.isFetching}
-									isError={!!productsQuery.isError && filteredItems.length === 0}
-									onRetry={onRefresh}
-									containerStyle={{ marginBottom: 0 }}
-									emptyTitle={filteredItems.length === 0 && !productsQuery.isError ? emptyTitle : ""}
-									emptyBody={filteredItems.length === 0 && !productsQuery.isError ? emptyBody : ""}
-									showPrimaryEmptyCta={
-										statusTabValue === "ACTIVE" &&
-										!isSearching &&
-										!hasActiveFilter &&
-										filteredItems.length === 0 &&
-										!productsQuery.isError
-									}
-									primaryEmptyCtaLabel={sellableTabValue === "SERVICES" ? "Create Service" : "Add Item"}
-									primaryEmptyCtaShape='pill'
-									onPrimaryEmptyCta={onPressCreate}
-									topContent={
-										<>
-											{/* 1) Sellable Type */}
-											<View style={styles.tabsRowTight}>
-												<BAIGroupTabs<InventorySellableTabValue>
-													tabs={sellableTabs}
-													value={sellableTabValue}
-													onChange={setSellableTab}
-													disabled={!canNavigate}
-													countFormatter={(count) => formatCompactCount(count, countryCode)}
-												/>
-											</View>
+							<BAISurface style={styles.filterSurface} padded={false} radius={16} borderWidth={StyleSheet.hairlineWidth}>
+								<View style={styles.filterPanel}>
+									{/* 1) Sellable Type */}
+									<View style={styles.tabsRowTight}>
+										<BAIGroupTabs<InventorySellableTabValue>
+											tabs={sellableTabs}
+											value={sellableTabValue}
+											onChange={setSellableTab}
+											disabled={!canNavigate}
+											countFormatter={(count) => formatCompactCount(count, countryCode)}
+										/>
+									</View>
 
-											{/* 2) Lifecycle */}
-											<View style={styles.tabsRowTight}>
-												<BAIGroupTabs<InventoryStatusTabValue>
-													tabs={statusTabs}
-													value={statusTabValue}
-													onChange={setStatusTab}
-													disabled={!canNavigate}
-													countFormatter={(count) => formatCompactCount(count, countryCode)}
-												/>
-											</View>
+									{/* 2) Lifecycle */}
+									<View style={styles.tabsRowTight}>
+										<BAIGroupTabs<InventoryStatusTabValue>
+											tabs={statusTabs}
+											value={statusTabValue}
+											onChange={setStatusTab}
+											disabled={!canNavigate}
+											countFormatter={(count) => formatCompactCount(count, countryCode)}
+										/>
+									</View>
 
-											{/* 3) Stock Health — Items + Active only */}
-											{showHealthTabs ? (
-												<View style={styles.tabsRowTight}>
-													<BAIGroupTabs<InventoryHealthTabValue>
-														tabs={healthTabs}
-														value={healthTabValue}
-														onChange={setHealthTab}
-														disabled={!canNavigate}
-														countFormatter={(count) => formatCompactCount(count, countryCode)}
+									{/* 3) Stock Health — Items + Active only */}
+									{showHealthTabs ? (
+										<View style={styles.tabsRowTight}>
+											<BAIGroupTabs<InventoryHealthTabValue>
+												tabs={healthTabs}
+												value={healthTabValue}
+												onChange={setHealthTab}
+												disabled={!canNavigate}
+												countFormatter={(count) => formatCompactCount(count, countryCode)}
+											/>
+										</View>
+									) : null}
+								</View>
+							</BAISurface>
+							</View>
+						}
+					scrollArea={
+						<View style={styles.scrollArea}>
+							{isInitialLoading ? (
+								<View style={styles.centerState}>
+									<BAIActivityIndicator size='small' />
+									<BAIText variant='body' muted style={styles.centerStateText}>
+										Loading inventory...
+									</BAIText>
+								</View>
+							) : isInitialError ? (
+								<View style={styles.centerState}>
+									<BAIText variant='subtitle'>Could not load inventory.</BAIText>
+									<BAIText variant='body' muted style={styles.centerStateText}>
+										Check your connection and retry.
+									</BAIText>
+									<View style={styles.retryWrap}>
+										<BAIRetryButton mode='contained' variant='outline' onPress={onRefresh}>
+											Retry
+										</BAIRetryButton>
+									</View>
+								</View>
+							) : (
+								<FlatList
+									data={filteredItems}
+									keyExtractor={(p) => p.id}
+									style={styles.list}
+									contentContainerStyle={[
+										styles.listContent,
+										filteredItems.length === 0 ? styles.listContentEmpty : null,
+									]}
+									showsVerticalScrollIndicator={false}
+									showsHorizontalScrollIndicator={false}
+									refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+									renderItem={renderInventoryRow}
+									ItemSeparatorComponent={() => <View style={styles.itemGap} />}
+									ListEmptyComponent={
+										<View style={styles.emptyState}>
+											<BAIText variant='subtitle' style={styles.emptyStateTitle}>
+												{emptyTitle}
+											</BAIText>
+											<BAIText variant='body' muted style={styles.emptyStateBody}>
+												{emptyBody}
+											</BAIText>
+											{showPrimaryEmptyCta ? (
+												<View style={styles.emptyCtaWrap}>
+													<BAIEmptyStateButton
+														mode='contained'
+														shape='pill'
+														label={sellableTabValue === "SERVICES" ? "Create Service" : "Add Item"}
+														onPress={onPressCreate}
 													/>
 												</View>
 											) : null}
-										</>
+										</View>
 									}
-								>
-									{list}
-								</InventoryListShell>
-							</View>
-						</BAISurface>
-					</View>
-				</KeyboardAvoidingView>
-			</TouchableWithoutFeedback>
+									keyboardShouldPersistTaps='handled'
+									keyboardDismissMode={Platform.OS === "ios" ? "on-drag" : "none"}
+									onEndReached={onEndReached}
+									onEndReachedThreshold={0.4}
+									ListFooterComponent={
+										<View style={styles.loadMoreFooter}>
+											{productsQuery.isFetchingNextPage ? <BAIActivityIndicator size='small' /> : null}
+										</View>
+									}
+								/>
+							)}
+						</View>
+					}
+				/>
+			</View>
 		</BAIScreen>
 	);
 }
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	kav: { flex: 1 },
 
 	screen: {
 		flex: 1,
+		minHeight: 0,
 		paddingHorizontal: 12,
 		paddingBottom: 0,
 		paddingTop: 0, // Ensure no top padding
 		gap: 0,
 	},
-
-	inventoryContainer: {
-		overflow: "hidden",
-		marginTop: 0, // Remove any top margin
-		marginBottom: 10,
-		flex: 1,
-		minHeight: 0,
+	fixedTopZone: {
+		gap: 6,
+		paddingTop: 6,
+		paddingBottom: 6,
 	},
 
 	heroRow: {
 		flexDirection: "row",
 		alignItems: "flex-start",
 		justifyContent: "space-between",
-		paddingBottom: 8,
-		gap: 12,
+		paddingBottom: 4,
+		gap: 8,
 	},
 	heroLeft: {
 		flex: 1,
 		minWidth: 0,
-		gap: 6,
+		gap: 2,
 	},
 	heroRight: {
 		alignItems: "flex-end",
-		gap: 6,
+		gap: 0,
 	},
 	titleRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
+		gap: 6,
 		flexWrap: "wrap",
 	},
 	addButton: {
@@ -777,24 +828,60 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 
-	tabsRowTight: {
-		marginTop: 8,
-	},
-
-	shellWrap: {
+	scrollArea: {
 		flex: 1,
 		minHeight: 0,
 		marginTop: 0,
-
-		// Counteract BAISurface `padded` inset so the shell can go edge-to-edge.
-		marginHorizontal: -16,
-		marginBottom: -16,
+		marginBottom: 0,
+	},
+	filterSurface: {
+		marginBottom: 0,
+	},
+	filterPanel: {
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		gap: 6,
+	},
+	tabsRowTight: {
+		marginTop: 0,
 	},
 
-	list: { flex: 1 },
-
+	list: { flex: 1, minHeight: 0 },
 	listContent: { paddingTop: 4, paddingBottom: 10 },
+	listContentEmpty: { flexGrow: 1 },
 	itemGap: { height: 10 },
+	centerState: {
+		flex: 1,
+		minHeight: 0,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 20,
+	},
+	centerStateText: {
+		marginTop: 10,
+		textAlign: "center",
+	},
+	retryWrap: {
+		marginTop: 14,
+	},
+	emptyState: {
+		flex: 1,
+		alignItems: "center",
+		justifyContent: "center",
+		paddingHorizontal: 20,
+		paddingTop: 16,
+		paddingBottom: 24,
+	},
+	emptyStateTitle: {
+		textAlign: "center",
+	},
+	emptyStateBody: {
+		textAlign: "center",
+		marginTop: 8,
+	},
+	emptyCtaWrap: {
+		marginTop: 14,
+	},
 	loadMoreFooter: {
 		paddingVertical: 12,
 		alignItems: "center",

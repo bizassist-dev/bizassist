@@ -14,7 +14,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, Image, Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import {
+	FlatList,
+	Keyboard,
+	Pressable,
+	RefreshControl,
+	StyleSheet,
+	TouchableWithoutFeedback,
+	View,
+} from "react-native";
 import { useTheme } from "react-native-paper";
 
 import { BAIButton } from "@/components/ui/BAIButton";
@@ -28,6 +36,8 @@ import { useAppBusy } from "@/hooks/useAppBusy";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import type { CatalogProduct } from "@/modules/catalog/catalog.types";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
+import { InventoryRow } from "@/modules/inventory/InventoryRow";
+import type { InventoryProduct } from "@/modules/inventory/inventory.types";
 import { resolvePosStatus } from "@/modules/pos/pos.status";
 import { clampQtyToStock } from "@/modules/pos/pos.stock";
 import { consumePendingQuantityEdit } from "@/modules/pos/pos.quantityEditStore";
@@ -236,35 +246,60 @@ function formatQtyDisplay(raw: string, maxFrac = 2, allowCompact = true): string
 	return `${neg ? "-" : ""}${iGrouped}${fTrim ? `.${fTrim}` : ""}`;
 }
 
-function unitTokenFromProduct(product: CatalogProduct): string {
-	return (
-		String((product as any)?.unitAbbreviation ?? (product as any)?.unit?.abbreviation ?? "").trim() ||
-		String((product as any)?.unitName ?? (product as any)?.unit?.name ?? "").trim()
-	);
-}
-
-function resolveCatalogStatus(product: CatalogProduct, inCartLine?: CartLine) {
-	if (!product?.trackInventory) return resolvePosStatus(product);
-
+function resolveCatalogOnHandRaw(product: CatalogProduct, inCartLine?: CartLine): string {
 	const onHandRaw =
 		(product as any)?.onHand ??
 		(product as any)?.onHandCached ??
 		(product as any)?.inventoryOnHand ??
 		(product as any)?.stockOnHand ??
 		"0";
+	return subtractQuantity(onHandRaw, inCartLine?.quantity ?? "0");
+}
 
-	const adjustedOnHand = subtractQuantity(onHandRaw, inCartLine?.quantity ?? "0");
+function resolveCatalogStatus(product: CatalogProduct, inCartLine?: CartLine) {
+	const adjustedOnHand = resolveCatalogOnHandRaw(product, inCartLine);
 	const status = resolvePosStatus({ ...product, onHand: adjustedOnHand });
-
-	const formattedLeft = formatQtyDisplay(adjustedOnHand);
-	const unitToken = unitTokenFromProduct(product);
-	const leftLabel = unitToken ? `${formattedLeft} ${unitToken} left` : `${formattedLeft} left`;
-
-	if (status.kind === "OUT_OF_STOCK") return { ...status, label: "Out of stock" };
-	if (status.kind === "LOW_STOCK") return { ...status, label: `Low stock: ${leftLabel}` };
-	if (status.kind === "IN_STOCK") return { ...status, label: leftLabel };
-
 	return status;
+}
+
+function toPosCatalogInventoryRowItem(product: CatalogProduct, onHandRaw: string): InventoryProduct {
+	const categoryName = String(product.categoryName ?? "").trim() || "None";
+	const categoryId = String(product.categoryId ?? "").trim();
+	const unitPrecisionScaleRaw =
+		(product as any)?.unitPrecisionScale ?? (product as any)?.precisionScale ?? (product as any)?.unit?.precisionScale;
+	const parsedPrice = product.price == null ? null : Number(product.price);
+	const parsedCost = product.cost == null ? null : Number(product.cost);
+
+	return {
+		id: product.id,
+		type: String(product.type ?? "PHYSICAL").toUpperCase() === "SERVICE" ? "SERVICE" : "PHYSICAL",
+		name: product.name,
+		sku: product.sku,
+		barcode: product.barcode,
+		price: Number.isFinite(parsedPrice) ? parsedPrice : null,
+		cost: Number.isFinite(parsedCost) ? parsedCost : null,
+		categoryId: product.categoryId,
+		category: {
+			id: categoryId || "none",
+			name: categoryName,
+			color: product.categoryColor,
+			isActive: true,
+		},
+		trackInventory: !!product.trackInventory,
+		reorderPoint: product.reorderPoint == null ? null : Number(product.reorderPoint),
+		reorderPointRaw: product.reorderPoint ?? undefined,
+		onHandCached: Number(onHandRaw) || 0,
+		onHandCachedRaw: onHandRaw,
+		unitId: product.unitId ?? undefined,
+		unitName: String((product as any)?.unitName ?? (product as any)?.unit?.name ?? "").trim() || undefined,
+		unitAbbreviation:
+			String((product as any)?.unitAbbreviation ?? (product as any)?.unit?.abbreviation ?? "").trim() || undefined,
+		unitPrecisionScale: Number.isFinite(Number(unitPrecisionScaleRaw)) ? Number(unitPrecisionScaleRaw) : 0,
+		primaryImageUrl: product.primaryImageUrl,
+		posTileMode: product.posTileMode,
+		posTileColor: product.posTileColor,
+		isActive: product.isActive,
+	};
 }
 
 export default function PosTablet() {
@@ -288,6 +323,7 @@ export default function PosTablet() {
 	}, []);
 
 	const disabled = !canNavigate;
+	const dismissKeyboard = useCallback(() => Keyboard.dismiss(), []);
 
 	const [q, setQ] = useState("");
 	const trimmedQ = q.trim();
@@ -481,6 +517,13 @@ export default function PosTablet() {
 
 	const showCatalogEmptyCta = !trimmedQ && items.length === 0 && !productsQuery.isError;
 	const isTrulyError = !!productsQuery.isError && items.length === 0;
+	const syncLabel = productsQuery.isFetching ? "Syncing..." : isTrulyError ? "Sync failed" : "Synced";
+	const syncColor = isTrulyError
+		? theme.colors.error
+		: theme.colors.onSurfaceVariant ?? theme.colors.onSurface;
+	const syncBg = isTrulyError
+		? theme.colors.errorContainer ?? theme.colors.error
+		: theme.colors.surfaceVariant ?? theme.colors.surface;
 
 	const openQuantityEdit = useCallback(
 		(l: CartLine) => {
@@ -515,12 +558,20 @@ export default function PosTablet() {
 	);
 
 	return (
-		<BAIScreen tabbed>
-			<BAISurface style={[styles.container, styles.screenSurface]} padded={false} bordered={false} radius={0}>
+		<BAIScreen tabbed safeAreaGradientBottom>
+			<TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
+				<BAISurface style={[styles.container, styles.screenSurface]} padded={false} bordered={false} radius={0}>
 				<View style={styles.header}>
 					<View style={styles.headerLeft}>
 						<View style={styles.titleBlock}>
-							<BAIText variant='title'>POS</BAIText>
+							<View style={styles.titleRow}>
+								<BAIText variant='title'>POS</BAIText>
+								<View style={[styles.headerSyncBadge, { backgroundColor: syncBg }]}> 
+									<BAIText variant='caption' muted={false} style={{ color: syncColor, fontWeight: "600" }}>
+										{syncLabel}
+									</BAIText>
+								</View>
+							</View>
 							{businessName ? (
 								<BAIText variant='subtitle' muted numberOfLines={1}>
 									{businessName}
@@ -584,111 +635,21 @@ export default function PosTablet() {
 										onRefresh={onRefresh}
 									/>
 								}
-								ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: borderColor }]} />}
+								ItemSeparatorComponent={() => <View style={styles.listItemGap} />}
 								renderItem={({ item }) => {
 									const inCartLine = cart[item.id];
-									const inCartQty = inCartLine?.quantity ?? "0";
-									const inCart = !!inCartLine;
-									const priceLabel = formatMoney({ currencyCode, amount: item.price ?? "0.00" });
+									const onHandRaw = resolveCatalogOnHandRaw(item, inCartLine);
 									const status = resolveCatalogStatus(item, inCartLine);
-									const rowDisabled = disabled || (status.disabled && !inCartLine);
-									const isLowStock = status.kind === "LOW_STOCK";
-									const isOutOfStock = status.kind === "OUT_OF_STOCK";
-									const warningColor = "#F59E0B";
-									const outColor = theme.colors.error;
-									const statusTextColor = isOutOfStock ? outColor : isLowStock ? warningColor : undefined;
-									const isOutOfStockRow = isOutOfStock && !inCartLine;
-									const disabledThumbBorderColor = theme.dark ? "#F5F5F5" : "#111111";
-
-									const imageUri = String(item.primaryImageUrl ?? "").trim();
-									const thumbnailInitials = String(item.name ?? "")
-										.trim()
-										.slice(0, 2)
-										.toUpperCase();
-									const neutralTileBg =
-										theme.colors.surfaceDisabled ?? theme.colors.surfaceVariant ?? theme.colors.surface;
-									const neutralTileText = theme.colors.onSurfaceVariant ?? theme.colors.onSurface;
+									const rowItem = toPosCatalogInventoryRowItem(item, onHandRaw);
 
 									return (
-										<Pressable
+										<InventoryRow
+											item={rowItem}
+											showOnHandUnit={false}
+											categoryColor={item.categoryColor}
 											onPress={() => addToCart(item)}
-											disabled={rowDisabled || loadingModifierProductId === item.id}
-											style={({ pressed }) => [
-												styles.row,
-												isOutOfStockRow && { backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
-												pressed && !rowDisabled && loadingModifierProductId !== item.id && { opacity: 0.78 },
-												(rowDisabled || loadingModifierProductId === item.id) && { opacity: 0.55 },
-											]}
-										>
-											<View style={styles.rowLeft}>
-												<View style={styles.tileShell}>
-													<View
-														style={[
-															styles.tileInner,
-															{
-																borderWidth: StyleSheet.hairlineWidth,
-																borderColor: rowDisabled ? disabledThumbBorderColor : borderColor,
-															},
-														]}
-													>
-														{imageUri ? (
-															<Image source={{ uri: imageUri }} style={styles.tileImage} />
-														) : (
-															<View style={[styles.tileColor, { backgroundColor: neutralTileBg }]}>
-																<BAIText variant='body' style={{ color: neutralTileText }}>
-																	{thumbnailInitials}
-																</BAIText>
-															</View>
-														)}
-													</View>
-
-													{inCart ? (
-														<View
-															style={[
-																styles.cartBadge,
-																{
-																	backgroundColor: theme.colors.primary,
-																	borderColor: theme.colors.onSurface,
-																},
-															]}
-														>
-															<BAIText
-																variant='caption'
-																style={[styles.cartBadgeText, { color: theme.colors.onPrimary }]}
-															>
-																{formatQtyDisplay(String(inCartQty), 2, false)}
-															</BAIText>
-														</View>
-													) : null}
-												</View>
-
-												<View style={styles.rowText}>
-													<BAIText variant='body' numberOfLines={1} style={styles.rowTitle}>
-														{item.name}
-													</BAIText>
-													{item.sku ? (
-														<BAIText variant='caption' muted>
-															SKU: {item.sku}
-														</BAIText>
-													) : null}
-												</View>
-											</View>
-
-											<View style={styles.rowRight}>
-												<BAIText variant='body' style={styles.rowPrice}>
-													{priceLabel}
-												</BAIText>
-
-												<BAIText
-													variant='caption'
-													muted={!isLowStock && !isOutOfStock}
-													style={statusTextColor ? { color: statusTextColor } : undefined}
-													numberOfLines={1}
-												>
-													{status.label}
-												</BAIText>
-											</View>
-										</Pressable>
+											disabled={disabled || (status.disabled && !inCartLine) || loadingModifierProductId === item.id}
+										/>
 									);
 								}}
 							/>
@@ -887,7 +848,8 @@ export default function PosTablet() {
 						setModifierPickerGroups([]);
 					}}
 				/>
-			</BAISurface>
+				</BAISurface>
+			</TouchableWithoutFeedback>
 		</BAIScreen>
 	);
 }
@@ -908,6 +870,12 @@ const styles = StyleSheet.create({
 	},
 	headerLeft: { flexDirection: "row", alignItems: "center", gap: 14, flex: 1 },
 	titleBlock: { minWidth: 120 },
+	titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+	headerSyncBadge: {
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		borderRadius: 999,
+	},
 	searchWrap: { flex: 1, maxWidth: 420 },
 	headerRight: { flexDirection: "row", gap: 10 },
 
@@ -942,51 +910,8 @@ const styles = StyleSheet.create({
 	emptyPane: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: 24, gap: 12 },
 
 	listContent: { paddingBottom: 16 },
+	listItemGap: { height: 8 },
 	sep: { height: POS_BORDER_WIDTH },
-
-	row: {
-		paddingVertical: 12,
-		paddingHorizontal: POS_GUTTER,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-	},
-	rowLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
-	rowText: { flex: 1, paddingRight: 12 },
-	rowTitle: { marginBottom: 2 },
-
-	rowRight: { alignItems: "flex-end", minWidth: 120 },
-	rowPrice: { fontWeight: "600" },
-
-	tileShell: { width: 44, height: 44 },
-	tileInner: {
-		width: 44,
-		height: 44,
-		borderRadius: 10,
-		overflow: "hidden",
-	},
-	tileImage: { width: 44, height: 44, borderRadius: 10 },
-	tileColor: {
-		width: 44,
-		height: 44,
-		borderRadius: 10,
-		alignItems: "center",
-		justifyContent: "center",
-	},
-
-	cartBadge: {
-		position: "absolute",
-		right: -6,
-		top: -6,
-		minWidth: 18,
-		height: 18,
-		borderRadius: 9,
-		alignItems: "center",
-		justifyContent: "center",
-		paddingHorizontal: 5,
-		borderWidth: 1,
-	},
-	cartBadgeText: { fontSize: 11, fontWeight: "700" },
 
 	cartList: { paddingHorizontal: 14, paddingBottom: 10 },
 

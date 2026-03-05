@@ -277,6 +277,7 @@ export function ModifierGroupAttachPickerScreen() {
 									<FlatList
 										data={filtered}
 										keyExtractor={(item) => item.id}
+										style={styles.list}
 										renderItem={({ item }) => (
 											<ModifierRow
 												item={item}
@@ -345,8 +346,8 @@ function ModifierRow({
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	wrap: { flex: 1, paddingHorizontal: 10, paddingBottom: 0, paddingTop: 0 },
-	card: { flex: 1, gap: 8 },
+	wrap: { flex: 1, minHeight: 0, paddingHorizontal: 10, paddingBottom: 0, paddingTop: 0 },
+	card: { flex: 1, minHeight: 0, gap: 8 },
 	panelContent: { gap: 6 },
 	headerApplyPill: {
 		minWidth: 90,
@@ -363,6 +364,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 		minHeight: 0,
 	},
+	list: { flex: 1, minHeight: 0 },
 	stateWrap: {
 		flex: 1,
 		alignItems: "center",

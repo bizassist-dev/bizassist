@@ -283,6 +283,8 @@ export default function VerifyEmailScreen() {
 	}, [initialCooldown, seedCooldownAll]);
 
 	const canResend = cooldownLeft <= 0;
+	const code = useMemo(() => digitsToCode(digits), [digits]);
+	const canVerify = !!email && code.length === OTP_LENGTH;
 
 	const otpTextColor = theme.colors.onSurface;
 	const otpBg = theme.colors.surfaceVariant;
@@ -354,6 +356,7 @@ export default function VerifyEmailScreen() {
 	);
 
 	const handleVerify = useCallback(async () => {
+		if (isVerifying) return;
 		setGlobalError("");
 
 		if (!email) {
@@ -361,7 +364,6 @@ export default function VerifyEmailScreen() {
 			return;
 		}
 
-		const code = digitsToCode(digits);
 		if (code.length !== OTP_LENGTH) {
 			setGlobalError("Please enter the 6-digit code.");
 			return;
@@ -395,7 +397,7 @@ export default function VerifyEmailScreen() {
 		} finally {
 			setIsVerifying(false);
 		}
-	}, [digits, email, purpose, router, verifyEmail, withBusy]);
+	}, [code, email, isVerifying, purpose, router, verifyEmail, withBusy]);
 
 	const handleResend = useCallback(async () => {
 		setGlobalError("");
@@ -539,7 +541,7 @@ export default function VerifyEmailScreen() {
 										)}
 									</View>
 
-									<BAICTAButton onPress={handleVerify} disabled={isVerifying} size='lg'>
+									<BAICTAButton onPress={handleVerify} disabled={isVerifying || !canVerify} size='lg'>
 										<BAIText variant='body' style={[styles.primaryButtonText, { color: verifyTitleColor }]}>
 											Verify Code
 										</BAIText>

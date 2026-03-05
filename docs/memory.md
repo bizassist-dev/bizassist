@@ -1,5 +1,6 @@
 Quick index:
 
+- See **2026-03-05 — UI Padding Axis Terminology Lock (Masterplan + Memory)** for canonical x/y padding language mapping.
 - See **2026-03-05 — Bottom Sheet vs Modal Selection Lock (Masterplan + Memory)** for canonical bottom sheet vs modal criteria.
 - See **2026-03-05 — API Contract + State Management + File Structure Governance Lock (Masterplan + Memory)** for architecture contract stabilization and implementation sequencing.
 - See **2026-03-05 — BizAssist SaaS Engineering Governance Framework Consolidation Lock** for canonical multi-layer governance coverage.
@@ -12,6 +13,23 @@ Quick index:
 - See **2026-03-05 — BizAssist Feature Lifecycle Governance Lock** for mandatory stage-gate feature delivery.
 - See **2026-03-05 — BizAssist Product Capability Map Lock** for canonical capability ownership boundaries.
 - See **2026-03-05 — BizAssist Capability to Module to Workspace Mapping Lock** for structural feature placement governance.
+
+## 2026-03-05 — UI Padding Axis Terminology Lock (Masterplan + Memory)
+
+### Memory Lock
+
+- Canonical policy name is **UI Padding Axis Terminology**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `0.11 UI Padding Axis Terminology (Locked)`
+
+### Locked Terminology Mapping
+
+- `x padding` means horizontal padding (x-axis).
+- `y padding` means vertical padding (y-axis).
+
+### Enforcement
+
+- Future UI/layout instructions and implementation decisions must apply this mapping by default unless explicitly overridden.
 
 ## 2026-03-05 — BizAssist Capability to Module to Workspace Mapping Lock
 

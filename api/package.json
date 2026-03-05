@@ -9,6 +9,9 @@
 		"heroku-postbuild": "npm run build",
 		"start": "TS_NODE_BASEURL=./dist node -r tsconfig-paths/register dist/server.js",
 		"test": "jest --runInBand",
+		"fixture:add": "ts-node prisma/seed.ts --action=add",
+		"fixture:clear-products": "ts-node prisma/seed.ts --action=clear-products",
+		"fixture:remove": "ts-node prisma/seed.ts --action=remove",
 		"prisma:generate": "prisma generate",
 		"prisma:deploy": "prisma migrate deploy",
 		"audit:test": "ts-node -r tsconfig-paths/register src/scripts/audit.console-test.ts"
