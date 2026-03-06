@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	View,
+	Pressable,
 	StyleSheet,
 	AppState,
 	ScrollView,
@@ -137,6 +138,7 @@ export default function InventoryScanScreen() {
 
 	const [permission, requestPermission] = useCameraPermissions();
 	const [permissionHint, setPermissionHint] = useState<string>("");
+	const [torchEnabled, setTorchEnabled] = useState(false);
 
 	const lockRef = useRef(false);
 	const [lockedUI, setLockedUI] = useState(false);
@@ -244,6 +246,7 @@ export default function InventoryScanScreen() {
 		setLocked(false);
 		setUniversalOpen(false);
 		setUniversalScannedValue("");
+		setTorchEnabled(false);
 		if (returnTo) {
 			router.replace({
 				pathname: returnTo as any,
@@ -317,6 +320,14 @@ export default function InventoryScanScreen() {
 		showError("Copy is not available in this build.");
 	}, [canRunUniversalAction, normalizedUniversalValue, showError, showSuccess]);
 
+	const dismissKeyboard = useCallback(() => {
+		ReactNative.Keyboard.dismiss();
+	}, []);
+
+	const onToggleTorch = useCallback(() => {
+		setTorchEnabled((v) => !v);
+	}, []);
+
 	const onUniversalScanAgain = useCallback(() => {
 		closeUniversalSheet();
 	}, [closeUniversalSheet]);
@@ -385,6 +396,8 @@ export default function InventoryScanScreen() {
 			}
 
 			if (lockRef.current) return;
+
+			setTorchEnabled(false);
 
 			if (isUniversalMode) {
 				openUniversalSheet(value);
@@ -500,6 +513,7 @@ export default function InventoryScanScreen() {
 						<CameraView
 							style={StyleSheet.absoluteFill}
 							facing='back'
+							enableTorch={torchEnabled}
 							barcodeScannerSettings={{
 								barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"],
 							}}
@@ -507,23 +521,39 @@ export default function InventoryScanScreen() {
 						/>
 
 						<View style={styles.overlayContainer} pointerEvents='box-none'>
+							<Pressable
+								style={StyleSheet.absoluteFill}
+								onPress={dismissKeyboard}
+								accessibilityRole='none'
+							/>
 							<View style={styles.topBar} pointerEvents='box-none'>
 								<BAISurface style={styles.topBarCard}>
 									<BAIText variant='subtitle'>{lockedUI ? "Captured" : "Scan barcode"}</BAIText>
 									<BAIText variant='caption' muted>
 										{lockedUI && !universalOpen
 											? "Returning to Inventory..."
-											: "Only barcodes inside the frame are captured."}
+											: "Scan inside the frame."}
 									</BAIText>
 								</BAISurface>
-								<BAIIconButton
-									icon='close'
-									variant='outlined'
-									size='xxl'
-									accessibilityLabel='Close scan'
-									onPress={onCancel}
-									style={styles.topBarCloseButton}
-								/>
+								<View style={styles.topBarActions}>
+									<BAIIconButton
+										icon='flashlight'
+										variant='outlined'
+										size='xxl'
+										iconColor={torchEnabled ? theme.colors.primary : undefined}
+										accessibilityLabel={torchEnabled ? 'Turn flashlight off' : 'Turn flashlight on'}
+										onPress={onToggleTorch}
+										style={[styles.topBarCloseButton, torchEnabled ? { borderColor: theme.colors.primary } : null]}
+									/>
+									<BAIIconButton
+										icon='close'
+										variant='outlined'
+										size='xxl'
+										accessibilityLabel='Close scan'
+										onPress={onCancel}
+										style={styles.topBarCloseButton}
+									/>
+								</View>
 							</View>
 
 							{/* Centered scan window (no dim overlay) */}
@@ -546,12 +576,16 @@ export default function InventoryScanScreen() {
 							{isUniversalMode && universalOpen ? (
 								<View style={[styles.bottomSheet, { marginBottom: bottomReserve }]}>
 									<BAISurface
-										style={[styles.bottomCard, { maxHeight: universalMaxHeight }]}
+										style={[
+											styles.bottomCard,
+											{ maxHeight: universalMaxHeight, backgroundColor: theme.dark ? "rgba(28,30,36,0.82)" : "rgba(255,255,255,0.88)" },
+										]}
 										onLayout={onUniversalCardLayout}
 									>
 										<ScrollView
 											showsVerticalScrollIndicator={false}
 											keyboardShouldPersistTaps='handled'
+											keyboardDismissMode='on-drag'
 											contentContainerStyle={styles.bottomCardScrollContent}
 										>
 											<View style={styles.dynamicHeading}>
@@ -670,6 +704,11 @@ const styles = StyleSheet.create({
 		backgroundColor: "rgba(0,0,0,0.45)",
 		borderColor: "rgba(255,255,255,0.2)",
 	},
+	topBarActions: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
 	// Scan stage
 	scanStage: {
 		flex: 1,
@@ -736,7 +775,7 @@ const styles = StyleSheet.create({
 		marginTop: "auto",
 	},
 	bottomCard: {
-		padding: 12,
+		padding: 16,
 		gap: 10,
 		overflow: "hidden",
 	},
