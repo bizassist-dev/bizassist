@@ -4,7 +4,6 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Switch, useTheme } from "react-native-paper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import { ConfirmActionModal } from "@/components/settings/ConfirmActionModal";
 import { BAIButton } from "@/components/ui/BAIButton";
@@ -30,6 +29,7 @@ const HEADER_RAIL_SIZE = 56;
 const HEADER_TITLE_SAFETY_GAP = 28;
 const HEADER_TITLE_ESTIMATED_CHAR_WIDTH = 10;
 const HEADER_TITLE_HORIZONTAL_PADDING = 18;
+const DEV_SCROLL_TEST_OPTION_COUNT = 18;
 
 function truncateHeaderTitle(value: string, maxLength: number): string {
 	const safe = String(value ?? "").trim();
@@ -42,7 +42,6 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 	const router = useRouter();
 	const { width: viewportWidth } = useWindowDimensions();
 	const { paddingX } = useResponsiveLayout();
-	const tabBarHeight = useBottomTabBarHeight();
 	const theme = useTheme();
 	const params = useLocalSearchParams<{ id?: string; returnTo?: string }>();
 	const groupId = String(params.id ?? "").trim();
@@ -72,6 +71,22 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 
 	const group = query.data;
 	const visibleOptions = useMemo(() => (group?.options ?? []).filter((option) => !option.isArchived), [group?.options]);
+	const listOptions = useMemo(() => {
+		if (!__DEV__ || visibleOptions.length >= DEV_SCROLL_TEST_OPTION_COUNT || visibleOptions.length === 0) {
+			return visibleOptions;
+		}
+
+		const seedOption = visibleOptions[0];
+		const needed = DEV_SCROLL_TEST_OPTION_COUNT - visibleOptions.length;
+		const syntheticOptions = Array.from({ length: needed }, (_, index) => ({
+			...seedOption,
+			id: `__dev-scroll-option-${index + 1}`,
+			name: `Test Modifier ${index + 1}`,
+			isSoldOut: index % 3 === 0,
+		}));
+
+		return [...visibleOptions, ...syntheticOptions];
+	}, [visibleOptions]);
 	const headerHorizontalPadding = paddingX || HEADER_SIDE_PADDING_FALLBACK;
 	const headerTitleMaxLength = useMemo(() => {
 		const rightReservedWidth = HEADER_RAIL_SIZE;
@@ -91,6 +106,7 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 
 	const onToggleSoldOut = useCallback(
 		(optionId: string, isSoldOut: boolean) => {
+			if (optionId.startsWith("__dev-scroll-option-")) return;
 			const nextIsSoldOut = !isSoldOut;
 			withBusy("Checking modifier sets...", async () => {
 				const preview = await modifiersApi.getSharedAvailability(optionId);
@@ -206,8 +222,8 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 	return (
 		<>
 			<Stack.Screen options={header} />
-			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} style={styles.root}>
-				<View style={[styles.wrap, { paddingBottom: tabBarHeight + 8 }]}>
+			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} safeAreaGradientBottom style={styles.root}>
+				<View style={styles.wrap}>
 					<View style={styles.content}>
 						{query.isLoading ? (
 							<View style={styles.stateWrap}>
@@ -219,38 +235,40 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 							</View>
 						) : (
 							<>
-								{!group.isArchived ? (
-									<View style={styles.topActionRow}>
-										<BAIButton
-											variant='outline'
-											intent='neutral'
-											shape='pill'
-											widthPreset='standard'
-											style={styles.topActionButton}
-											onPress={onBackToList}
-											disabled={busy.isBusy}
-										>
-											Cancel
-										</BAIButton>
-										<BAIButton
-											shape='pill'
-											widthPreset='standard'
-											style={styles.topActionButton}
-											onPress={onEditGroup}
-											disabled={busy.isBusy}
-										>
-											Edit
-										</BAIButton>
+								<View style={[styles.headerControlsContainer, { borderColor: outline }]}>
+									{!group.isArchived ? (
+										<View style={styles.topActionRow}>
+											<BAIButton
+												variant='outline'
+												intent='neutral'
+												shape='pill'
+												widthPreset='standard'
+												style={styles.topActionButton}
+												onPress={onBackToList}
+												disabled={busy.isBusy}
+											>
+												Cancel
+											</BAIButton>
+											<BAIButton
+												shape='pill'
+												widthPreset='standard'
+												style={styles.topActionButton}
+												onPress={onEditGroup}
+												disabled={busy.isBusy}
+											>
+												Edit
+											</BAIButton>
+										</View>
+									) : null}
+									<View style={[styles.tableHead, { borderBottomColor: outline }]}>
+										<BAIText variant='subtitle'>Modifiers</BAIText>
+										<BAIText variant='subtitle'>Availability</BAIText>
 									</View>
-								) : null}
-								<View style={[styles.tableHead, { borderBottomColor: outline }]}>
-									<BAIText variant='subtitle'>Modifiers</BAIText>
-									<BAIText variant='subtitle'>Availability</BAIText>
 								</View>
 
 								<View style={styles.rowsListWrap}>
 									<FlatList
-										data={visibleOptions}
+										data={listOptions}
 										keyExtractor={(item) => item.id}
 										style={styles.rowsList}
 										renderItem={({ item }) => (
@@ -269,7 +287,7 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 														)}
 														<Switch
 															value={!item.isSoldOut}
-															disabled={group.isArchived}
+															disabled={group.isArchived || item.id.startsWith("__dev-scroll-option-")}
 															onValueChange={() => onToggleSoldOut(item.id, item.isSoldOut)}
 														/>
 													</View>
@@ -388,8 +406,16 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	wrap: { flex: 1, paddingHorizontal: 10 },
+	wrap: { flex: 1, paddingHorizontal: 10, paddingBottom: 8 },
 	content: { flex: 1, width: "100%", maxWidth: 720, alignSelf: "center", gap: 8 },
+	headerControlsContainer: {
+		gap: 2,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderRadius: 12,
+		paddingHorizontal: 10,
+		paddingTop: 8,
+		marginBottom: 2,
+	},
 	topActionRow: {
 		flexDirection: "row",
 		gap: 8,
@@ -408,9 +434,7 @@ const styles = StyleSheet.create({
 	restoreModalLabel: { fontWeight: "400" },
 	tableHead: {
 		paddingTop: 4,
-		paddingBottom: 10,
-		marginBottom: 8,
-		borderBottomWidth: StyleSheet.hairlineWidth,
+		paddingBottom: 6,
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",

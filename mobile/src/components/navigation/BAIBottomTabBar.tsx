@@ -17,7 +17,7 @@
 
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { usePathname, useRouter } from "expo-router";
+import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useTheme } from "react-native-paper";
@@ -48,10 +48,13 @@ const LABELS: Record<CanonicalTab, string> = {
 	settings: "Settings",
 };
 
-const PILL_HEIGHT = 64;
-const PILL_RADIUS = 999;
+const DOCK_HEIGHT = 60;
+const DOCK_RADIUS = 999;
+const SCAN_BUTTON_SIZE = 56;
 
-const INSET = 6; // matches visual intent of GroupTabs container padding model
+const INSET = 6;
+const DOCK_ITEM_GAP = 2;
+const CLUSTER_GAP = 8;
 const OUTER_HORIZONTAL_MARGIN = 10;
 
 /**
@@ -111,6 +114,52 @@ function isSettingsRootPath(pathname: string): boolean {
 	);
 }
 
+function isInventoryScanPath(pathname: string): boolean {
+	const p = String(pathname ?? "")
+		.toLowerCase()
+		.trim()
+		.replace(/\/+$/g, "");
+	return (
+		p === "/inventory/scan" ||
+		p === "/(app)/(tabs)/inventory/scan" ||
+		p === "/pos/scan" ||
+		p === "/(app)/(tabs)/pos/scan"
+	);
+}
+
+function isPosPath(pathname: string): boolean {
+	const p = String(pathname ?? "")
+		.toLowerCase()
+		.trim()
+		.replace(/\/+$/g, "");
+	return p === "/pos" || p.startsWith("/pos/") || p === "/(app)/(tabs)/pos" || p.startsWith("/(app)/(tabs)/pos/");
+}
+
+function toReturnToPath(pathname: string, params: Record<string, unknown>): string {
+	const base = String(pathname ?? "").trim();
+	if (!base.startsWith("/")) return "/(app)/(tabs)/inventory";
+
+	const query = new URLSearchParams();
+	for (const [key, raw] of Object.entries(params ?? {})) {
+		if (!key) continue;
+		if (key === "scannedBarcode" || key === "q" || key === "returnTo") continue;
+
+		if (Array.isArray(raw)) {
+			for (const v of raw) {
+				if (typeof v === "string" && v.trim()) query.append(key, v);
+			}
+			continue;
+		}
+
+		if (typeof raw === "string" && raw.trim()) {
+			query.append(key, raw);
+		}
+	}
+
+	const qs = query.toString();
+	return qs ? `${base}?${qs}` : base;
+}
+
 /**
  * Darken a hex color by mixing it with black.
  * amount: 0..1 (higher = darker)
@@ -131,10 +180,44 @@ function darkenHex(hexColor: string, amount: number): string {
 	return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 }
 
+function applyAlpha(color: string, alpha: number): string {
+	const a = Math.max(0, Math.min(1, alpha));
+	const normalized = String(color ?? "").trim();
+	if (!normalized) return `rgba(0,0,0,${a})`;
+
+	if (normalized.startsWith("#")) {
+		const hex = normalized.slice(1);
+		const isShort = hex.length === 3;
+		const isLong = hex.length === 6;
+		if (!isShort && !isLong) return normalized;
+		const full = isShort
+			? hex
+					.split("")
+					.map((ch) => `${ch}${ch}`)
+					.join("")
+			: hex;
+		const r = parseInt(full.slice(0, 2), 16);
+		const g = parseInt(full.slice(2, 4), 16);
+		const b = parseInt(full.slice(4, 6), 16);
+		return `rgba(${r}, ${g}, ${b}, ${a})`;
+	}
+
+	const rgbMatch = normalized.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+	if (rgbMatch) {
+		const r = Number(rgbMatch[1]);
+		const g = Number(rgbMatch[2]);
+		const b = Number(rgbMatch[3]);
+		return `rgba(${r}, ${g}, ${b}, ${a})`;
+	}
+
+	return normalized;
+}
+
 export function BAIBottomTabBar(props: BottomTabBarProps) {
 	const { state, descriptors, navigation } = props;
 	const { routes, index: tabIndex } = state;
 	const pathname = usePathname();
+	const currentParams = useLocalSearchParams();
 	const router = useRouter();
 
 	const theme = useTheme();
@@ -148,35 +231,38 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 	 * - Phone: 420
 	 * - Tablet: slightly wider, but still compact and centered (NOT a full-width dock)
 	 */
-	const maxWidth = isTablet ? 520 : 420;
+	const maxWidth = isTablet ? 480 : 372;
 
 	const bottom = Math.max(insets.bottom, 12);
 
-	const pillBg = theme.colors.surface;
-	const containerBorderColor = theme.colors.outline;
-	const activeBorderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const outlineBase = theme.colors.outlineVariant ?? theme.colors.outline;
+	const dockBg = applyAlpha(theme.colors.surface, theme.dark ? 0.93 : 0.97);
+	const containerBorderColor = applyAlpha(outlineBase, theme.dark ? 0.78 : 0.48);
+	const activeBorderColor = applyAlpha(outlineBase, theme.dark ? 0.34 : 0.14);
 
-	const activeBase =
-		theme.colors.surfaceVariant ??
-		theme.colors.primaryContainer ??
-		theme.colors.secondaryContainer ??
-		theme.colors.primary;
+	const activeBubbleBg = applyAlpha(theme.colors.onSurface, theme.dark ? 0.14 : 0.08);
 
-	const activeBubbleBg = darkenHex(activeBase, theme.dark ? 0.06 : 0.1);
+	const scanButtonBg = applyAlpha(theme.colors.surface, theme.dark ? 0.96 : 0.99);
+	const scanButtonBorderColor = applyAlpha(outlineBase, theme.dark ? 0.82 : 0.56);
 
 	const iconIdle = theme.colors.onSurfaceVariant;
-	const iconActive = theme.colors.onSurface;
+	const iconActive = theme.colors.primary;
 	const labelIdle = theme.colors.onSurfaceVariant;
-	const labelActive = theme.colors.onSurface;
+	const labelActive = theme.colors.primary;
 
 	const wrapperStyle = useMemo(
 		() => [styles.wrapper, { left: OUTER_HORIZONTAL_MARGIN, right: OUTER_HORIZONTAL_MARGIN, bottom }],
 		[bottom],
 	);
 
-	const pillStyle = useMemo(
-		() => [styles.pill, { maxWidth, backgroundColor: pillBg, borderColor: containerBorderColor }],
-		[maxWidth, pillBg, containerBorderColor],
+	const dockStyle = useMemo(
+		() => [styles.dock, { maxWidth, backgroundColor: dockBg, borderColor: containerBorderColor }],
+		[maxWidth, dockBg, containerBorderColor],
+	);
+
+	const scanButtonStyle = useMemo(
+		() => [styles.scanButton, { backgroundColor: scanButtonBg, borderColor: scanButtonBorderColor }],
+		[scanButtonBg, scanButtonBorderColor],
 	);
 
 	/**
@@ -258,6 +344,18 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		return tabRoot?.key ?? null;
 	}, [focusedCanonical, routeByCanonical]);
 
+	const isScanOpen = isInventoryScanPath(pathname);
+	const scanIconColor = iconIdle;
+	const returnToPath = useMemo(
+		() => toReturnToPath(pathname, currentParams as Record<string, unknown>),
+		[currentParams, pathname],
+	);
+	const currentDraftId = useMemo(() => {
+		const raw = (currentParams as any)?.draftId;
+		if (typeof raw !== "string") return "";
+		return raw.trim();
+	}, [currentParams]);
+
 	const onTabPress = (route: (typeof routes)[number], canonical: CanonicalTab) => {
 		if (canonical === "settings") {
 			if (isSettingsRootPath(pathname)) return;
@@ -280,58 +378,85 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		navigation.navigate(route.name as never);
 	};
 
+	const onScanPress = () => {
+		if (isScanOpen) return;
+		const originWorkspace = isPosPath(pathname) ? "pos" : "inventory";
+		const scanPathname = isPosPath(pathname) ? "/(app)/(tabs)/pos/scan" : "/(app)/(tabs)/inventory/scan";
+		router.push({
+			pathname: scanPathname as any,
+			params: {
+				scanIntent: "universal",
+				scanOriginWorkspace: originWorkspace,
+				returnTo: returnToPath,
+				...(currentDraftId ? { draftId: currentDraftId } : {}),
+			},
+		} as any);
+	};
+
 	return (
 		<View pointerEvents='box-none' style={wrapperStyle}>
-			<View style={pillStyle}>
-				<View style={styles.row}>
-					{TAB_ORDER.map((key) => {
-						const route = routeByCanonical.get(key);
+			<View style={styles.cluster}>
+				<View style={dockStyle}>
+					<View style={styles.row}>
+						{TAB_ORDER.map((key) => {
+							const route = routeByCanonical.get(key);
 
-						// Maintain stable spacing even if a route is temporarily absent
-						if (!route) return <View key={key} style={styles.item} />;
+							if (!route) return <View key={key} style={styles.item} />;
 
-						// Critical: focus is derived from the chosen tab root route, not raw route names
-						const baseFocused = route.key === focusedTabRouteKey || focusedCanonical === key;
-						const isFocused = baseFocused;
-						const settingsRoot = key === "settings" && isSettingsRootPath(pathname);
-						const isPressDisabled = key === "settings" ? isFocused && settingsRoot : isFocused;
+							const baseFocused = route.key === focusedTabRouteKey || focusedCanonical === key;
+							const isFocused = baseFocused;
+							const settingsRoot = key === "settings" && isSettingsRootPath(pathname);
+							const isPressDisabled = key === "settings" ? isFocused && settingsRoot : isFocused;
 
-						const { options } = descriptors[route.key];
+							const { options } = descriptors[route.key];
 
-						return (
-							<Pressable
-								key={route.key}
-								onPress={() => onTabPress(route, key)}
-								disabled={isPressDisabled}
-								accessibilityRole='button'
-								accessibilityState={isFocused ? { selected: true, disabled: isPressDisabled } : {}}
-								accessibilityLabel={options.tabBarAccessibilityLabel ?? LABELS[key]}
-								style={styles.item}
-								hitSlop={8}
-							>
-								<View
-									style={[
-										styles.bubble,
-										{
-											backgroundColor: isFocused ? activeBubbleBg : "transparent",
-											borderColor: isFocused ? activeBorderColor : "transparent",
-										},
-									]}
+							return (
+								<Pressable
+									key={route.key}
+									onPress={() => onTabPress(route, key)}
+									disabled={isPressDisabled}
+									accessibilityRole='button'
+									accessibilityState={isFocused ? { selected: true, disabled: isPressDisabled } : {}}
+									accessibilityLabel={options.tabBarAccessibilityLabel ?? LABELS[key]}
+									style={styles.item}
+									hitSlop={8}
 								>
-									<MaterialCommunityIcons name={ICONS[key]} size={26} color={isFocused ? iconActive : iconIdle} />
-
-									<BAIText
-										variant='caption'
-										style={[styles.label, { color: isFocused ? labelActive : labelIdle }]}
-										numberOfLines={1}
+									<View
+										style={[
+											styles.bubble,
+											{
+												backgroundColor: isFocused ? activeBubbleBg : "transparent",
+												borderColor: isFocused ? activeBorderColor : "transparent",
+											},
+										]}
 									>
-										{LABELS[key]}
-									</BAIText>
-								</View>
-							</Pressable>
-						);
-					})}
+										<MaterialCommunityIcons name={ICONS[key]} size={24} color={isFocused ? iconActive : iconIdle} />
+
+										<BAIText
+											variant='caption'
+											style={[styles.label, { color: isFocused ? labelActive : labelIdle }]}
+											numberOfLines={1}
+										>
+											{LABELS[key]}
+										</BAIText>
+									</View>
+								</Pressable>
+							);
+						})}
+					</View>
 				</View>
+
+				<Pressable
+					onPress={onScanPress}
+					disabled={isScanOpen}
+					accessibilityRole='button'
+					accessibilityState={isScanOpen ? { selected: true, disabled: true } : {}}
+					accessibilityLabel='Scan barcode'
+					style={scanButtonStyle}
+					hitSlop={8}
+				>
+					<MaterialCommunityIcons name='barcode-scan' size={28} color={scanIconColor} />
+				</Pressable>
 			</View>
 		</View>
 	);
@@ -347,20 +472,26 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 	},
 
-	pill: {
+	cluster: {
 		width: "100%",
-		height: PILL_HEIGHT,
-		borderRadius: PILL_RADIUS,
-		borderWidth: 1,
+		maxWidth: 480 + SCAN_BUTTON_SIZE + CLUSTER_GAP,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: CLUSTER_GAP,
+	},
 
-		// Equal inset on all sides (top/bottom == left/right).
+	dock: {
+		flex: 1,
+		height: DOCK_HEIGHT,
+		borderRadius: DOCK_RADIUS,
+		borderWidth: StyleSheet.hairlineWidth,
 		padding: INSET,
-
 		justifyContent: "center",
 
 		shadowColor: "#000",
-		shadowOpacity: 0.07,
-		shadowRadius: 12,
+		shadowOpacity: 0.1,
+		shadowRadius: 14,
 		shadowOffset: { width: 0, height: 6 },
 		elevation: 3,
 	},
@@ -369,9 +500,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		height: "100%",
-
-		// Equal inter-tab spacing matching the pill inset.
-		gap: INSET,
+		gap: DOCK_ITEM_GAP,
 	},
 
 	item: {
@@ -386,12 +515,29 @@ const styles = StyleSheet.create({
 		borderRadius: 999,
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 4,
+		gap: 2,
+		paddingHorizontal: 4,
+		paddingVertical: 4,
 		borderWidth: StyleSheet.hairlineWidth,
 	},
 
+	scanButton: {
+		width: SCAN_BUTTON_SIZE,
+		height: SCAN_BUTTON_SIZE,
+		borderRadius: SCAN_BUTTON_SIZE / 2,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+
+		shadowColor: "#000",
+		shadowOpacity: 0.12,
+		shadowRadius: 14,
+		shadowOffset: { width: 0, height: 6 },
+		elevation: 5,
+	},
+
 	label: {
-		fontSize: 9,
-		lineHeight: 10,
+		fontSize: 10,
+		lineHeight: 12,
 	},
 });

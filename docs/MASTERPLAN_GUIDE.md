@@ -1249,6 +1249,101 @@ GTIN (Global Trade Item Number) is the global barcode identifier standard coveri
 - Enables future barcode-based auto-create workflows.
 - Maintains clear separation between physical products and services.
 
+### 3.0.1 Scanner Frame-Gated Acceptance Governance (Locked)
+
+Canonical source document:
+
+- `docs/features/SCAN_FRAME_GATED_SCANNER_FLOW_MASTERPLAN_2026-03-07.md`
+
+Locked rules:
+
+1. Scanner acceptance must be frame-gated by default:
+
+- barcode events are accepted only when detector geometry indicates the barcode center is inside the on-screen scan box.
+
+2. Geometry-missing fallback is mandatory:
+
+- when bounds/corner metadata is unavailable or unreliable, scanner must use a conservative confirmation fallback (for example repeated same-value confirmation within a short window) before acceptance.
+
+3. Return-flow contract remains stable:
+
+- scanner must continue returning `scannedBarcode` for barcode fields and `q` for search flows, while preserving `returnTo` and `draftId` when present.
+
+4. Workspace route isolation is mandatory:
+
+- POS scan flow must use POS wrapper route (`/(app)/(tabs)/pos/scan`), and Inventory scan flow must use Inventory wrapper route (`/(app)/(tabs)/inventory/scan`).
+- launching scanner from POS must not redirect into Inventory tab scan flow.
+
+5. UX instruction lock:
+
+- scanner helper guidance must explicitly indicate that only barcodes inside the frame are captured.
+
+### 3.0.2 Universal Scan Action-Hub Governance (Locked)
+
+Canonical source document:
+
+- `docs/features/UNIVERSAL_SCAN_ACTION_HUB_MASTERPLAN_2026-03-07.md`
+
+Locked rules:
+
+1. Scanner launch intent must be explicit:
+
+- `scanIntent=contextual` for known barcode-consumer launches.
+- `scanIntent=universal` for bottom tab launches without a known consumer.
+
+2. Contextual flow remains deterministic and unchanged:
+
+- successful scan returns directly to `returnTo` payload consumers.
+
+3. Universal flow must present a post-scan dynamic action section:
+
+- visible only after capture in universal mode; hidden in contextual mode.
+
+4. Dynamic action section must include:
+
+- editable scanned barcode value with existing GTIN sanitization/validation guardrails.
+- a focused shortlist of barcode-heavy actions (Inventory search, Create item with barcode, POS find/search).
+
+5. Workspace isolation remains mandatory:
+
+- POS scan wrapper and Inventory scan wrapper flows must remain isolated and must not cross-switch tabs unexpectedly.
+
+6. V1 scope lock:
+
+- no Prisma schema change and no required API contract change.
+
+### 3.0.3 Scanner UI Layout and Screen Space Optimization Governance (Locked)
+
+Canonical source document:
+
+- `docs/features/SCAN_UI_LAYOUT_SCREEN_SPACE_OPTIMIZATION_MASTERPLAN_2026-03-07.md`
+
+Locked rules:
+
+1. Scanner UI must follow 3-zone layout model:
+
+- fixed top helper zone, flexible scan canvas zone, and fixed bottom universal action zone (universal mode only).
+
+2. Scan box sizing must be responsive and bounded:
+
+- derive from available viewport space and clamp by phone/tablet target ranges.
+
+3. Universal action section must reserve safe bottom space:
+
+- must not overlap tab bar chrome or device safe-area insets.
+
+4. Universal action density must remain focused:
+
+- primary action + limited secondary actions; avoid bloated always-visible stacks.
+
+5. Tablet-first consistency lock:
+
+- behavior semantics must match phone; only dimensions and capacity adapt.
+
+6. Contextual flow lock:
+
+- dynamic universal section remains hidden in contextual scan mode.
+
 ### 3.1 Feature-first architecture
 
 BizAssist follows a feature-first modular monolith structure. Do not introduce “misc” dumping grounds.

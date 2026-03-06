@@ -433,7 +433,7 @@ export default function PosTablet() {
 		if (disabled) return;
 		if (!lockNav()) return;
 		router.push({
-			pathname: "/(app)/(tabs)/inventory/scan" as any,
+			pathname: "/(app)/(tabs)/pos/scan" as any,
 			params: { returnTo: "/(app)/(tabs)/pos" },
 		} as any);
 	}, [disabled, lockNav, router]);

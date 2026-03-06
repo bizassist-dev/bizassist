@@ -13,6 +13,84 @@ Quick index:
 - See **2026-03-05 — BizAssist Feature Lifecycle Governance Lock** for mandatory stage-gate feature delivery.
 - See **2026-03-05 — BizAssist Product Capability Map Lock** for canonical capability ownership boundaries.
 - See **2026-03-05 — BizAssist Capability to Module to Workspace Mapping Lock** for structural feature placement governance.
+- See **2026-03-07 — Scanner Frame-Gated Acceptance + POS Wrapper Flow Lock** for scanner in-frame acceptance and workspace-isolated scan routing.
+- See **2026-03-07 — Universal Scan Action-Hub Lock** for non-contextual bottom-tab scanner behavior and dynamic post-scan action section governance.
+- See **2026-03-07 — Scanner UI Layout and Screen Space Optimization Lock** for scanner zone layout, responsive scan-box sizing, and universal action section spacing governance.
+
+## 2026-03-07 — Scanner Frame-Gated Acceptance + POS Wrapper Flow Lock
+
+### Memory Lock
+
+- Canonical policy name is **Scanner Frame-Gated Acceptance + POS Wrapper Flow**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.0.1 Scanner Frame-Gated Acceptance Governance (Locked)`
+- Canonical source document is:
+  - `docs/features/SCAN_FRAME_GATED_SCANNER_FLOW_MASTERPLAN_2026-03-07.md`
+
+### Locked Decisions
+
+- Scanner must accept barcode events only when detector geometry places barcode center inside the scan frame.
+- When geometry metadata is unavailable/unreliable, scanner must use conservative confirmation fallback before accepting.
+- Scanner return payload contract remains:
+  - `scannedBarcode` for barcode-field consumers
+  - `q` for search consumers
+  - preserve `returnTo` and `draftId`
+- Workspace scan flow isolation is mandatory:
+  - POS -> `/(app)/(tabs)/pos/scan`
+  - Inventory -> `/(app)/(tabs)/inventory/scan`
+  - POS scanner launches must not redirect to Inventory scan route.
+
+### Enforcement
+
+- New scanner behavior changes must preserve frame-gated acceptance rules and return-flow contract compatibility.
+- Any route-level scan refactor must maintain workspace isolation and deterministic exit to origin flow.
+
+## 2026-03-07 — Universal Scan Action-Hub Lock
+
+### Memory Lock
+
+- Canonical policy name is **Universal Scan Action-Hub**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.0.2 Universal Scan Action-Hub Governance (Locked)`
+- Canonical source document is:
+  - `docs/features/UNIVERSAL_SCAN_ACTION_HUB_MASTERPLAN_2026-03-07.md`
+
+### Locked Decisions
+
+- Scanner launch intent must be explicit: `scanIntent=contextual` or `scanIntent=universal`.
+- Contextual launches keep direct return behavior (no post-scan action section).
+- Universal launches show post-scan dynamic action section after capture.
+- Universal action section must include editable barcode value and focused barcode-heavy actions.
+- Barcode editability is allowed in universal mode with GTIN sanitization/validation guardrails.
+- V1 requires no Prisma schema change and no mandatory API contract change.
+
+### Enforcement
+
+- Scanner feature changes must preserve contextual determinism and universal action-hub behavior separation.
+- Action list expansion must remain controlled; avoid bloated generic action menus.
+
+## 2026-03-07 — Scanner UI Layout and Screen Space Optimization Lock
+
+### Memory Lock
+
+- Canonical policy name is **Scanner UI Layout and Screen Space Optimization**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.0.3 Scanner UI Layout and Screen Space Optimization Governance (Locked)`
+- Canonical source document is:
+  - `docs/features/SCAN_UI_LAYOUT_SCREEN_SPACE_OPTIMIZATION_MASTERPLAN_2026-03-07.md`
+
+### Locked Decisions
+
+- Scanner layout follows 3 zones: top helper row, flexible scan canvas, bottom universal action hub.
+- Universal action hub appears only in universal mode post-capture.
+- Scan box sizing is responsive and bounded by phone/tablet target ranges.
+- Bottom tab bar and safe-area reservation is mandatory for universal action hub placement.
+- CTA density in universal action hub stays focused with controlled visible action count.
+
+### Enforcement
+
+- Scanner UI changes must preserve 3-zone structure and avoid tab-bar overlap.
+- Device-specific spacing must be solved with bounded responsive sizing, not one-off hardcoded offsets.
 
 ## 2026-03-05 — UI Padding Axis Terminology Lock (Masterplan + Memory)
 

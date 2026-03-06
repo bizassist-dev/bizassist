@@ -61,6 +61,7 @@ type MoneyFieldKey = "price" | "cost";
 
 const MONEY_SCALE = MONEY_INPUT_PRECISION;
 const MONEY_MAX_MINOR_DIGITS = 11;
+const SCANNED_BARCODE_KEY = "scannedBarcode" as const;
 
 function clampText(value: string, maxLength: number): string {
 	if (maxLength <= 0) return "";
@@ -366,6 +367,22 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 		},
 		[activeMoneyField, costMinor, patch, priceMinor],
 	);
+
+	useEffect(() => {
+		const raw =
+			typeof (params as any)?.[SCANNED_BARCODE_KEY] === "string"
+				? String((params as any)[SCANNED_BARCODE_KEY]).trim()
+				: "";
+		const value = sanitizeGtinInput(raw).trim();
+		if (!value) return;
+
+		patch({ barcode: value });
+
+		(router as any).setParams?.({
+			[SCANNED_BARCODE_KEY]: undefined,
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [(params as any)?.[SCANNED_BARCODE_KEY]]);
 
 	useEffect(() => {
 		const rawSelectedId =
