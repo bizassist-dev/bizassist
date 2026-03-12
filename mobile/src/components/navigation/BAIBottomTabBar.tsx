@@ -51,7 +51,7 @@ const LABELS: Record<CanonicalTab, string> = {
 
 const DOCK_HEIGHT = 68;
 const DOCK_RADIUS = 999;
-const SCAN_BUTTON_SIZE = 60;
+const SCAN_BUTTON_SIZE = 68;
 
 const INSET = 6;
 const DOCK_ITEM_GAP = 2;
@@ -61,10 +61,10 @@ const BOTTOM_SAFE_AREA_REDUCTION = 8;
 // Material glyphs do not render at equal optical size with equal numeric sizes,
 // so these are calibrated for visual parity in the dock.
 const TAB_ICON_SIZES: Record<CanonicalTab, number> = {
-	home: 23,
-	inventory: 25,
-	pos: 23,
-	settings: 23,
+	home: 25,
+	inventory: 27,
+	pos: 25,
+	settings: 26,
 };
 
 /**
