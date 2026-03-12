@@ -230,16 +230,14 @@ function normalizeInventoryProduct(input: any): InventoryProduct {
 		posTileNode?.tileColor,
 	);
 	const rawPosTileMode =
-		toTrimmedStringFromCandidates(input?.posTileMode, input?.tileMode, posTileNode?.mode, posTileNode?.tileMode)?.toUpperCase() ??
-		"";
+		toTrimmedStringFromCandidates(
+			input?.posTileMode,
+			input?.tileMode,
+			posTileNode?.mode,
+			posTileNode?.tileMode,
+		)?.toUpperCase() ?? "";
 	const posTileMode =
-		rawPosTileMode === "IMAGE"
-			? "IMAGE"
-			: rawPosTileMode === "COLOR"
-				? "COLOR"
-				: primaryImageUrl
-					? "IMAGE"
-					: "COLOR";
+		rawPosTileMode === "IMAGE" ? "IMAGE" : rawPosTileMode === "COLOR" ? "COLOR" : primaryImageUrl ? "IMAGE" : "COLOR";
 	const posTileLabel = toTrimmedStringFromCandidates(
 		input?.posTileLabel,
 		input?.tileLabel,
@@ -400,7 +398,9 @@ function normalizeProductVariations(input: any): InventoryProductDetail["variati
 				label: toTrimmedString(variation?.label) ?? "",
 				valueMap,
 				sortOrder:
-					typeof variation?.sortOrder === "number" && Number.isFinite(variation.sortOrder) ? variation.sortOrder : index,
+					typeof variation?.sortOrder === "number" && Number.isFinite(variation.sortOrder)
+						? variation.sortOrder
+						: index,
 			};
 		})
 		.filter(Boolean) as NonNullable<NonNullable<InventoryProductDetail["variations"]>[number]>[];

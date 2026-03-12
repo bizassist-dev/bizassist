@@ -300,11 +300,7 @@ async function resolveServiceCreateState(
 	businessId: string,
 	input: Pick<
 		CreateProductInput,
-		| "unitId"
-		| "processingEnabled"
-		| "durationInitialMinutes"
-		| "durationProcessingMinutes"
-		| "durationFinalMinutes"
+		"unitId" | "processingEnabled" | "durationInitialMinutes" | "durationProcessingMinutes" | "durationFinalMinutes"
 	>,
 ): Promise<ServiceCreateState> {
 	return {
@@ -322,26 +318,17 @@ async function resolveServiceUpdateState(
 	businessId: string,
 	input: Pick<
 		UpdateProductInput,
-		| "unitId"
-		| "processingEnabled"
-		| "durationInitialMinutes"
-		| "durationProcessingMinutes"
-		| "durationFinalMinutes"
+		"unitId" | "processingEnabled" | "durationInitialMinutes" | "durationProcessingMinutes" | "durationFinalMinutes"
 	>,
 	existing: ExistingServiceState,
 ): Promise<ServiceCreateState> {
 	return {
-		unitId: await resolveServiceTimeUnitId(
-			businessId,
-			input.unitId !== undefined ? input.unitId : existing.unitId,
-		),
+		unitId: await resolveServiceTimeUnitId(businessId, input.unitId !== undefined ? input.unitId : existing.unitId),
 		duration: normalizeServiceDurationForUpdate({
 			processingEnabled:
 				input.processingEnabled !== undefined ? input.processingEnabled === true : existing.processingEnabled,
 			durationInitialMinutes:
-				input.durationInitialMinutes !== undefined
-					? input.durationInitialMinutes
-					: existing.durationInitialMinutes,
+				input.durationInitialMinutes !== undefined ? input.durationInitialMinutes : existing.durationInitialMinutes,
 			durationProcessingMinutes:
 				input.durationProcessingMinutes !== undefined
 					? input.durationProcessingMinutes
@@ -900,8 +887,7 @@ export class CatalogService {
 		const type = (input.type as ProductType | undefined) ?? ProductType.PHYSICAL;
 		const normalizedSku = normalizeSkuInput(input.sku);
 		const normalizedBarcode = input.barcode ?? null;
-		const serviceState =
-			type === ProductType.SERVICE ? await resolveServiceCreateState(businessId, input) : null;
+		const serviceState = type === ProductType.SERVICE ? await resolveServiceCreateState(businessId, input) : null;
 		const effectiveUnitId = serviceState?.unitId ?? input.unitId ?? null;
 		const effectiveTrackInventory = serviceState ? false : (input.trackInventory ?? true);
 		const effectiveReorderPointInput = serviceState ? null : input.reorderPoint;
@@ -1177,8 +1163,10 @@ export class CatalogService {
 					: input.trackInventory !== undefined
 						? input.trackInventory
 						: undefined,
-			durationTotalMinutes: existingType === ProductType.SERVICE ? serviceState?.duration.durationTotalMinutes : undefined,
-			serviceDurationMins: existingType === ProductType.SERVICE ? serviceState?.duration.serviceDurationMins : undefined,
+			durationTotalMinutes:
+				existingType === ProductType.SERVICE ? serviceState?.duration.durationTotalMinutes : undefined,
+			serviceDurationMins:
+				existingType === ProductType.SERVICE ? serviceState?.duration.serviceDurationMins : undefined,
 			processingEnabled:
 				existingType === ProductType.SERVICE ? (serviceState?.duration.processingEnabled ?? false) : undefined,
 			durationInitialMinutes:

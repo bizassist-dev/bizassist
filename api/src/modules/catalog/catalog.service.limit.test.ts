@@ -25,9 +25,11 @@ jest.mock("@/modules/media/media.resolve", () => ({
 }));
 
 function getMockedUnitLookup() {
-	return (jest.requireMock("@/modules/units/units.repository") as {
-		mockGetBusinessUnitById: jest.Mock<() => Promise<any | null>>;
-	}).mockGetBusinessUnitById;
+	return (
+		jest.requireMock("@/modules/units/units.repository") as {
+			mockGetBusinessUnitById: jest.Mock<() => Promise<any | null>>;
+		}
+	).mockGetBusinessUnitById;
 }
 
 describe("CatalogService safety ceiling", () => {

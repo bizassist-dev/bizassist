@@ -241,14 +241,7 @@ function InventoryRowBase({
 				},
 			],
 		}),
-		[
-			attentionValue,
-			disabled,
-			highlightBg,
-			highlightBorderColor,
-			rowBaseBackgroundColor,
-			rowBaseBorderColor,
-		],
+		[attentionValue, disabled, highlightBg, highlightBorderColor, rowBaseBackgroundColor, rowBaseBorderColor],
 	);
 
 	return (

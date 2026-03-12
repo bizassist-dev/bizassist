@@ -20,14 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	FlatList,
-	Keyboard,
-	Pressable,
-	StyleSheet,
-	TouchableWithoutFeedback,
-	View,
-} from "react-native";
+import { FlatList, Keyboard, Pressable, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
 import { useTheme } from "react-native-paper";
 
 import { BAIButton } from "@/components/ui/BAIButton";
@@ -389,16 +382,16 @@ export default function PosPhone() {
 		queryFn: ({ signal }) => inventoryApi.listProducts({ q: trimmedQ || undefined, limit: 100 }, { signal }),
 		enabled: !!businessId,
 		staleTime: 30_000,
-			refetchInterval: operationalRefreshInterval,
-			refetchIntervalInBackground: false,
-			placeholderData: (previousData) => {
-				if (previousData) return previousData;
-				return getPosCatalogPlaceholderData(queryClient, {
-					businessId: businessId || "no-business",
-					search: trimmedQ,
-				}) as unknown as typeof previousData;
-			},
-		});
+		refetchInterval: operationalRefreshInterval,
+		refetchIntervalInBackground: false,
+		placeholderData: (previousData) => {
+			if (previousData) return previousData;
+			return getPosCatalogPlaceholderData(queryClient, {
+				businessId: businessId || "no-business",
+				search: trimmedQ,
+			}) as unknown as typeof previousData;
+		},
+	});
 
 	const items = useMemo(
 		() => (productsQuery.data?.items ?? []) as unknown as CatalogProduct[],

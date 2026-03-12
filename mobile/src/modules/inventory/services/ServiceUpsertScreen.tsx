@@ -49,7 +49,11 @@ import {
 	type ServiceCreateDraft,
 } from "@/modules/inventory/drafts/serviceCreateDraft";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
-import { inventoryScopeRoot, mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
+import {
+	inventoryScopeRoot,
+	mapInventoryRouteToScope,
+	type InventoryRouteScope,
+} from "@/modules/inventory/navigation.scope";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { runGovernedExitReplace } from "@/modules/inventory/navigation.governance";
 import {
@@ -1258,11 +1262,7 @@ export function ServiceUpsertScreen(props: {
 										>
 											Cancel
 										</BAICTAPillButton>
-										<BAICTAPillButton
-											onPress={onSaveDetail}
-											disabled={isSaveDisabled}
-											style={styles.actionButton}
-										>
+										<BAICTAPillButton onPress={onSaveDetail} disabled={isSaveDisabled} style={styles.actionButton}>
 											Save
 										</BAICTAPillButton>
 									</View>

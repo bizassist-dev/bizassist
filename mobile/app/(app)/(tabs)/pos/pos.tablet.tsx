@@ -14,14 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	FlatList,
-	Keyboard,
-	Pressable,
-	StyleSheet,
-	TouchableWithoutFeedback,
-	View,
-} from "react-native";
+import { FlatList, Keyboard, Pressable, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
 import { useTheme } from "react-native-paper";
 
 import { BAIButton } from "@/components/ui/BAIButton";
@@ -299,7 +292,9 @@ function toPosCatalogInventoryRowItem(product: CatalogProduct, onHandRaw: string
 		},
 		trackInventory: !!product.trackInventory,
 		durationTotalMinutes:
-			durationTotalMinutes == null || !Number.isFinite(Number(durationTotalMinutes)) ? null : Number(durationTotalMinutes),
+			durationTotalMinutes == null || !Number.isFinite(Number(durationTotalMinutes))
+				? null
+				: Number(durationTotalMinutes),
 		processingEnabled,
 		durationInitialMinutes:
 			durationInitialMinutes == null || !Number.isFinite(Number(durationInitialMinutes))
@@ -310,7 +305,9 @@ function toPosCatalogInventoryRowItem(product: CatalogProduct, onHandRaw: string
 				? null
 				: Number(durationProcessingMinutes),
 		durationFinalMinutes:
-			durationFinalMinutes == null || !Number.isFinite(Number(durationFinalMinutes)) ? null : Number(durationFinalMinutes),
+			durationFinalMinutes == null || !Number.isFinite(Number(durationFinalMinutes))
+				? null
+				: Number(durationFinalMinutes),
 		reorderPoint: product.reorderPoint == null ? null : Number(product.reorderPoint),
 		reorderPointRaw: product.reorderPoint ?? undefined,
 		onHandCached: Number(onHandRaw) || 0,
@@ -372,16 +369,16 @@ export default function PosTablet() {
 		queryFn: ({ signal }) => inventoryApi.listProducts({ q: trimmedQ || undefined, limit: 250 }, { signal }),
 		enabled: !!businessId,
 		staleTime: 30_000,
-			refetchInterval: operationalRefreshInterval,
-			refetchIntervalInBackground: false,
-			placeholderData: (previousData) => {
-				if (previousData) return previousData;
-				return getPosCatalogPlaceholderData(queryClient, {
-					businessId: businessId || "no-business",
-					search: trimmedQ,
-				}) as unknown as typeof previousData;
-			},
-		});
+		refetchInterval: operationalRefreshInterval,
+		refetchIntervalInBackground: false,
+		placeholderData: (previousData) => {
+			if (previousData) return previousData;
+			return getPosCatalogPlaceholderData(queryClient, {
+				businessId: businessId || "no-business",
+				search: trimmedQ,
+			}) as unknown as typeof previousData;
+		},
+	});
 
 	const items = useMemo(
 		() => (productsQuery.data?.items ?? []) as unknown as CatalogProduct[],
@@ -621,8 +618,10 @@ export default function PosTablet() {
 		router.setParams({ scannedBarcode: undefined } as any);
 	}, [params.scannedBarcode, router]);
 
-	const showCatalogEmptyCta = !isCatalogBlockingLoad && !trimmedQ && visibleCatalogItems.length === 0 && !productsQuery.isError;
-	const isSearchEmptyState = !isCatalogBlockingLoad && !!trimmedQ && visibleCatalogItems.length === 0 && !productsQuery.isError;
+	const showCatalogEmptyCta =
+		!isCatalogBlockingLoad && !trimmedQ && visibleCatalogItems.length === 0 && !productsQuery.isError;
+	const isSearchEmptyState =
+		!isCatalogBlockingLoad && !!trimmedQ && visibleCatalogItems.length === 0 && !productsQuery.isError;
 	const isTrulyError = !!productsQuery.isError && visibleCatalogItems.length === 0;
 	const syncLabel = productsQuery.isFetching ? "Syncing..." : isTrulyError ? "Sync failed" : "Synced";
 	const syncColor = isTrulyError ? theme.colors.error : (theme.colors.onSurfaceVariant ?? theme.colors.onSurface);
@@ -732,10 +731,10 @@ export default function PosTablet() {
 										{isCatalogBlockingLoad
 											? "Loading catalog..."
 											: isTrulyError
-											? "Unable to load catalog."
-											: isSearchEmptyState
-												? "No results found."
-												: "No items yet."}
+												? "Unable to load catalog."
+												: isSearchEmptyState
+													? "No results found."
+													: "No items yet."}
 									</BAIText>
 									{isCatalogBlockingLoad ? null : isSearchEmptyState ? (
 										<BAIText variant='caption' muted>
