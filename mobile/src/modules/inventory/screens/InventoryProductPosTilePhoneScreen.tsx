@@ -22,6 +22,7 @@ import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIGroupTabs, type BAIGroupTab } from "@/components/ui/BAIGroupTabs";
 import { BAITextInput } from "@/components/ui/BAITextInput";
+import { InventoryPermissionModal } from "@/modules/inventory/components/InventoryPermissionModal";
 
 import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 import {
@@ -29,7 +30,7 @@ import {
 	mapInventoryRouteToScope,
 	type InventoryRouteScope,
 } from "@/modules/inventory/navigation.scope";
-import { requestCameraAccess } from "@/modules/inventory/inventory.permissions";
+import { openAppSettings, requestCameraAccess } from "@/modules/inventory/inventory.permissions";
 import { useProcessExitGuard } from "@/modules/navigation/useProcessExitGuard";
 import { posTileLabelRegex } from "@/shared/validation/patterns";
 import { useProductCreateDraft } from "@/modules/inventory/drafts/useProductCreateDraft";
@@ -110,7 +111,9 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 	const [tileColor, setTileColor] = useState<string | null>(() => initialTileColorRef.current);
 	const [tileImageUri, setTileImageUri] = useState(() => initialTileImageUriRef.current);
 	const [deletedTileImageUri, setDeletedTileImageUri] = useState<string>("");
-	const [mediaError, setMediaError] = useState<string | null>(null);
+	const [cameraModalOpen, setCameraModalOpen] = useState(false);
+	const [cameraModalMessage, setCameraModalMessage] = useState("");
+	const [cameraModalAllowSettings, setCameraModalAllowSettings] = useState(false);
 	const tileLabelPlaceholder = useMemo(() => `Optional, Up to ${FIELD_LIMITS.posTileLabel} Characters`, []);
 
 	const incomingLocalUri = useMemo(() => safeString(params[LOCAL_URI_KEY]).trim(), [params]);
@@ -168,7 +171,27 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 		disabled: isUiDisabled,
 		onExit: guardedOnExit,
 		exitFallbackRoute: "/(app)/(tabs)/inventory",
+		showAvatarPlaceholder: true,
 	});
+
+	const showCameraModal = useCallback((message: string, allowSettings = false) => {
+		setCameraModalMessage(message);
+		setCameraModalAllowSettings(allowSettings);
+		setCameraModalOpen(true);
+	}, []);
+
+	const onCloseCameraModal = useCallback(() => {
+		setCameraModalAllowSettings(false);
+		setCameraModalOpen(false);
+	}, []);
+
+	const onOpenSettings = useCallback(async () => {
+		setCameraModalAllowSettings(false);
+		setCameraModalOpen(false);
+		const opened = await openAppSettings();
+		if (opened) return;
+		showCameraModal("Unable to open Settings right now. Please open Settings and allow Camera access for BizAssist.");
+	}, [showCameraModal]);
 
 	const onSave = useCallback(() => {
 		if (isUiDisabled) return;
@@ -177,10 +200,8 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 		const trimmedLabel = tileLabel.trim();
 		const tileLabelError = validateOptionalPosTileLabel(trimmedLabel);
 		if (tileLabelError) {
-			setMediaError(tileLabelError);
 			return;
 		}
-		setMediaError(null);
 
 		patch({
 			posTileLabel: trimmedLabel,
@@ -212,7 +233,6 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 	const onChooseFromLibrary = useCallback(() => {
 		if (isUiDisabled) return;
 		if (!lockNav()) return;
-		setMediaError(null);
 
 		router.push({
 			pathname: toScopedRoute(POS_TILE_PHOTO_LIBRARY_ROUTE) as any,
@@ -228,17 +248,16 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 	const onTakePhoto = useCallback(async () => {
 		if (isUiDisabled) return;
 		if (!lockNav()) return;
-		setMediaError(null);
 
 		try {
 			const permissionState = await requestCameraAccess();
 			if (permissionState !== "granted") {
 				if (permissionState === "blocked") {
-					setMediaError("Camera access is blocked. Open Settings to allow camera access, or use Photo Library.");
+					showCameraModal("Camera access is blocked. Open Settings and allow Camera access for BizAssist.", true);
 					return;
 				}
 
-				setMediaError("Camera permission is required. You can use Photo Library instead.");
+				showCameraModal("Camera permission is required. You can use Photo Library instead.");
 				return;
 			}
 
@@ -264,9 +283,9 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 				},
 			});
 		} catch {
-			setMediaError("Camera is not available on this device. Use Photo Library instead.");
+			showCameraModal("Camera is not available on this device. Use library photos instead.");
 		}
-	}, [draftId, isUiDisabled, lockNav, posTileRoute, rootReturnTo, router, tileLabel, toScopedRoute]);
+	}, [draftId, isUiDisabled, lockNav, posTileRoute, rootReturnTo, router, showCameraModal, tileLabel, toScopedRoute]);
 
 	const onRemoveImage = useCallback(() => {
 		if (isUiDisabled) return;
@@ -295,9 +314,7 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 	const imageActionIconColor = isUndoState
 		? (theme.colors.onPrimary ?? "#FFFFFF")
 		: ((theme.colors as any).onError ?? "#FFFFFF");
-	const imageActionBackgroundColor = isUndoState
-		? theme.colors.primary
-		: theme.colors.error;
+	const imageActionBackgroundColor = isUndoState ? theme.colors.primary : theme.colors.error;
 	const isTileLabelValid = useMemo(() => {
 		return validateOptionalPosTileLabel(tileLabel) == null;
 	}, [tileLabel]);
@@ -350,15 +367,25 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 								</BAIText>
 							) : null}
 
-							<View style={{ height: 10 }} />
+							<View style={{ height: 6 }} />
 
 							<BAIGroupTabs tabs={TABS} value={tileMode} onChange={setTileMode} disabled={isUiDisabled} />
 
-							<View style={{ height: 16 }} />
+							<View style={{ height: 10 }} />
 
 							{tileMode === "IMAGE" ? (
 								<View style={styles.actions}>
 									<View style={styles.inlineActions}>
+										<BAIIconButton
+											icon={imageActionIcon}
+											accessibilityLabel={imageActionLabel}
+											variant='filled'
+											size='lg'
+											iconColor={imageActionIconColor}
+											onPress={isUndoState ? onRestoreImage : onRemoveImage}
+											disabled={imageActionDisabled}
+											style={[styles.photoActionIconButton, { backgroundColor: imageActionBackgroundColor }]}
+										/>
 										<BAIButton
 											intent='primary'
 											variant='solid'
@@ -367,9 +394,9 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 											onPress={onChooseFromLibrary}
 											disabled={isUiDisabled}
 											style={{ flex: 1 }}
-											contentStyle={{ gap: 4 }}
+											contentStyle={{ gap: 0 }}
 										>
-											Photo Library
+											Library
 										</BAIButton>
 										<BAIButton
 											intent='primary'
@@ -379,138 +406,111 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 											onPress={onTakePhoto}
 											disabled={isUiDisabled}
 											style={{ flex: 1 }}
-											contentStyle={{ gap: 4 }}
+											contentStyle={{ gap: 0 }}
 										>
-											Take Photo
+											Camera
 										</BAIButton>
 									</View>
 									<View style={styles.previewContainer}>
-										<View style={styles.previewAnchor}>
-											<BAIIconButton
-												icon={imageActionIcon}
-												accessibilityLabel={imageActionLabel}
-												variant='filled'
-												size='lg'
-												iconColor={imageActionIconColor}
-												onPress={isUndoState ? onRestoreImage : onRemoveImage}
-												disabled={imageActionDisabled}
-												style={[styles.previewDeleteButton, { backgroundColor: imageActionBackgroundColor }]}
-											/>
-
-											<View
-												style={[
-													styles.previewWrap,
-													{
-														borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
-														backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-													},
-												]}
-											>
-												{hasImage ? (
-													<Image source={{ uri: tileImageUri }} style={styles.previewImage} resizeMode='cover' />
-												) : (
-													<View style={styles.previewEmpty}>
-														<FontAwesome6
-															name='image'
-															size={52}
-															color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-														/>
-														<BAIText variant='caption' muted>
-															No Photo
-														</BAIText>
-													</View>
-												)}
-											</View>
+										<View
+											style={[
+												styles.previewWrap,
+												{
+													borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+											]}
+										>
+											{hasImage ? (
+												<Image source={{ uri: tileImageUri }} style={styles.previewImage} resizeMode='cover' />
+											) : (
+												<View style={styles.previewEmpty}>
+													<FontAwesome6
+														name='image'
+														size={52}
+														color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+													/>
+													<BAIText variant='caption' muted>
+														No Photo
+													</BAIText>
+												</View>
+											)}
 										</View>
 									</View>
 								</View>
 							) : (
 								<PosTileColorSelector value={tileColor} onChange={setTileColor} disabled={isUiDisabled} />
 							)}
-							{mediaError ? (
-								<BAIText variant='caption' style={{ color: theme.colors.error }}>
-									{mediaError}
-								</BAIText>
-							) : null}
-
-							<View
-								style={[styles.separator, { backgroundColor: theme.colors.outlineVariant ?? theme.colors.outline }]}
-							/>
-
-							<View style={[styles.actionBar, { borderColor: theme.colors.outlineVariant ?? theme.colors.outline }]}>
-								<BAIButton
-									intent='neutral'
-									variant='outline'
-									widthPreset='standard'
-									onPress={guardedOnExit}
-									disabled={isUiDisabled}
-									style={{ flex: 1 }}
-								>
-									Cancel
-								</BAIButton>
-
-								<BAIButton
-									intent='primary'
-									variant='solid'
-									widthPreset='standard'
-									onPress={onSave}
-									disabled={isUiDisabled || !isTileLabelValid || !hasChanges}
-									style={{ flex: 1 }}
-								>
-									Save
-								</BAIButton>
-							</View>
 						</BAISurface>
+
+						<View style={styles.footerActions}>
+							<BAIButton
+								intent='neutral'
+								variant='outline'
+								widthPreset='standard'
+								onPress={guardedOnExit}
+								disabled={isUiDisabled}
+								style={{ flex: 1 }}
+							>
+								Cancel
+							</BAIButton>
+
+							<BAIButton
+								intent='primary'
+								variant='solid'
+								widthPreset='standard'
+								onPress={onSave}
+								disabled={isUiDisabled || !isTileLabelValid || !hasChanges}
+								style={{ flex: 1 }}
+							>
+								Save
+							</BAIButton>
+						</View>
 					</View>
 				</TouchableWithoutFeedback>
 			</BAIScreen>
+			<InventoryPermissionModal
+				visible={cameraModalOpen}
+				title='Select Photo'
+				message={cameraModalMessage}
+				borderColor={theme.colors.outlineVariant ?? theme.colors.outline}
+				onClose={onCloseCameraModal}
+				allowSettings={cameraModalAllowSettings}
+				onOpenSettings={cameraModalAllowSettings ? onOpenSettings : undefined}
+			/>
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12 },
-	card: { borderWidth: 1, borderRadius: 24 },
-	actions: { gap: 12, marginBottom: 20 },
+	screen: { flex: 1, paddingHorizontal: 8, gap: 12 },
+	card: { borderWidth: 1, borderRadius: 24, padding: 12 },
+	actions: { gap: 8, marginBottom: 12 },
 	inlineActions: {
 		flexDirection: "row",
 		gap: 12,
+		alignItems: "center",
 	},
-	separator: {
-		height: StyleSheet.hairlineWidth,
-		marginBottom: 10,
-	},
-	actionBar: {
-		paddingVertical: 10,
-		paddingHorizontal: 0,
+	footerActions: {
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
 	},
-	previewContainer: {
-		alignItems: "center",
-		marginTop: 12,
-	},
-	previewAnchor: {
-		position: "relative",
-		width: "62%",
-		alignSelf: "center",
-	},
-	previewDeleteButton: {
-		position: "absolute",
-		right: -70,
-		top: 0,
+	photoActionIconButton: {
 		width: 52,
 		height: 52,
 		borderRadius: 26,
-		zIndex: 2,
+	},
+	previewContainer: {
+		alignItems: "center",
+		marginTop: 8,
 	},
 	previewWrap: {
 		borderWidth: 1,
 		borderRadius: 18,
 		overflow: "hidden",
-		width: "100%",
+		width: "62%",
 		aspectRatio: 1,
 		alignSelf: "center",
 	},

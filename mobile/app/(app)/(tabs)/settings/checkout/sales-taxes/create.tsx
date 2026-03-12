@@ -12,8 +12,10 @@ import { BAISurface } from "@/components/ui/BAISurface";
 import { BAISwitchRow } from "@/components/ui/BAISwitchRow";
 import { BAIText } from "@/components/ui/BAIText";
 import { BAITextInput } from "@/components/ui/BAITextInput";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { useAppBusy } from "@/hooks/useAppBusy";
 import {
+	useArchiveSalesTax,
 	useCreateSalesTax,
 	useRestoreSalesTax,
 	useSalesTaxById,
@@ -66,10 +68,13 @@ export default function SalesTaxCreateScreen() {
 	const theme = useTheme();
 	const { withBusy } = useAppBusy();
 	const createSalesTax = useCreateSalesTax();
+	const archiveSalesTax = useArchiveSalesTax();
 	const updateSalesTax = useUpdateSalesTax();
 	const restoreSalesTax = useRestoreSalesTax();
 	const { draft, setDraft, resetDraft } = useSalesTaxDraft();
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 	const hydratedTaxIdRef = useRef<string | null>(null);
 
 	const taxIdParam = params.taxId;
@@ -181,18 +186,43 @@ export default function SalesTaxCreateScreen() {
 
 	const onArchive = useCallback(() => {
 		if (!taxId) return;
-		router.push({
-			pathname: "/(app)/(tabs)/settings/checkout/sales-taxes/archive" as any,
-			params: { taxId },
-		});
-	}, [router, taxId]);
+		setIsArchiveConfirmOpen(true);
+	}, [taxId]);
 
-	const onRestore = useCallback(async () => {
+	const onRestore = useCallback(() => {
+		if (!taxId) return;
+		setIsRestoreConfirmOpen(true);
+	}, [taxId]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		setIsArchiveConfirmOpen(false);
+	}, []);
+
+	const closeRestoreConfirm = useCallback(() => {
+		setIsRestoreConfirmOpen(false);
+	}, []);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!taxId) return;
+		setSaveError(null);
+		await withBusy("Archiving sales tax...", async () => {
+			try {
+				await archiveSalesTax.mutateAsync(taxId);
+				setIsArchiveConfirmOpen(false);
+				router.replace("/(app)/(tabs)/settings/checkout/sales-taxes" as any);
+			} catch (error: any) {
+				setSaveError(error?.message ?? "Could not archive sales tax.");
+			}
+		});
+	}, [archiveSalesTax, router, taxId, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
 		if (!taxId) return;
 		setSaveError(null);
 		await withBusy("Restoring sales tax...", async () => {
 			try {
 				await restoreSalesTax.mutateAsync(taxId);
+				setIsRestoreConfirmOpen(false);
 				router.replace("/(app)/(tabs)/settings/checkout/sales-taxes" as any);
 			} catch (error: any) {
 				setSaveError(error?.message ?? "Could not restore sales tax.");
@@ -366,6 +396,24 @@ export default function SalesTaxCreateScreen() {
 						</ScrollView>
 					</BAISurface>
 				</View>
+				<BAIConfirmArchiveModal
+					visible={isArchiveConfirmOpen}
+					entityLabel='sales tax'
+					entityName={taxQuery.data?.name}
+					description='Archived taxes remain in your records and are removed from active checkout calculations.'
+					onDismiss={closeArchiveConfirm}
+					onConfirm={onConfirmArchive}
+					disabled={archiveSalesTax.isPending}
+				/>
+				<BAIConfirmRestoreModal
+					visible={isRestoreConfirmOpen}
+					entityLabel='sales tax'
+					entityName={taxQuery.data?.name}
+					description='Restored taxes return to active checkout calculations.'
+					onDismiss={closeRestoreConfirm}
+					onConfirm={onConfirmRestore}
+					disabled={restoreSalesTax.isPending}
+				/>
 			</BAIScreen>
 		</>
 	);

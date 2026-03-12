@@ -41,7 +41,6 @@ export function InventoryPermissionModal({
 					<BAIButton
 						intent='primary'
 						variant={allowSettings ? "outline" : "solid"}
-						shape='pill'
 						onPress={onClose}
 						style={{ marginTop: 14 }}
 					>

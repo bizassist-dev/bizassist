@@ -81,36 +81,6 @@ export function buildDiscountEditRoute(mode: DiscountFlowMode, discountId: strin
 	return appendReturnToQuery(base, returnTo);
 }
 
-export function buildDiscountArchiveRoute(
-	mode: DiscountFlowMode,
-	discountId: string,
-	returnTo: string | null = null,
-): string {
-	const id = String(discountId ?? "").trim();
-	if (!id) return buildDiscountLedgerRoute(mode, returnTo);
-
-	const base =
-		mode === "settings"
-			? `/(app)/(tabs)/settings/discounts/${encodeURIComponent(id)}/archive`
-			: `/(app)/(tabs)/inventory/discounts/${encodeURIComponent(id)}/archive`;
-	return appendReturnToQuery(base, returnTo);
-}
-
-export function buildDiscountRestoreRoute(
-	mode: DiscountFlowMode,
-	discountId: string,
-	returnTo: string | null = null,
-): string {
-	const id = String(discountId ?? "").trim();
-	if (!id) return buildDiscountLedgerRoute(mode, returnTo);
-
-	const base =
-		mode === "settings"
-			? `/(app)/(tabs)/settings/discounts/${encodeURIComponent(id)}/restore`
-			: `/(app)/(tabs)/inventory/discounts/${encodeURIComponent(id)}/restore`;
-	return appendReturnToQuery(base, returnTo);
-}
-
 export function resolveDiscountFlowExitRoute(mode: DiscountFlowMode, returnTo: string | null): string {
 	return returnTo ?? DISCOUNT_FLOW_EXIT_ROUTE_BY_MODE[mode];
 }
@@ -160,14 +130,6 @@ export function buildSettingsDiscountEditRoute(discountId: string, returnTo: str
 	return buildDiscountEditRoute("settings", discountId, returnTo);
 }
 
-export function buildSettingsDiscountArchiveRoute(discountId: string, returnTo: string | null = null): string {
-	return buildDiscountArchiveRoute("settings", discountId, returnTo);
-}
-
-export function buildSettingsDiscountRestoreRoute(discountId: string, returnTo: string | null = null): string {
-	return buildDiscountRestoreRoute("settings", discountId, returnTo);
-}
-
 export function resolveSettingsDiscountFlowExitRoute(returnTo: string | null): string {
 	return resolveDiscountFlowExitRoute("settings", returnTo);
 }
@@ -190,14 +152,6 @@ export function buildInventoryDiscountDetailsRoute(discountId: string, returnTo:
 
 export function buildInventoryDiscountEditRoute(discountId: string, returnTo: string | null = null): string {
 	return buildDiscountEditRoute("inventory", discountId, returnTo);
-}
-
-export function buildInventoryDiscountArchiveRoute(discountId: string, returnTo: string | null = null): string {
-	return buildDiscountArchiveRoute("inventory", discountId, returnTo);
-}
-
-export function buildInventoryDiscountRestoreRoute(discountId: string, returnTo: string | null = null): string {
-	return buildDiscountRestoreRoute("inventory", discountId, returnTo);
 }
 
 export function resolveInventoryDiscountFlowExitRoute(returnTo: string | null): string {

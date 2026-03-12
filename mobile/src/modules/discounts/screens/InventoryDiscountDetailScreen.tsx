@@ -13,6 +13,7 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { BAIInlineHeaderScaffold } from "@/components/ui/BAIInlineHeaderScaffold";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
@@ -21,15 +22,19 @@ import { BAIText } from "@/components/ui/BAIText";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
-import { useDiscountById, useDiscountVisibilityQuery } from "@/modules/discounts/discounts.queries";
 import {
-	buildInventoryDiscountArchiveRoute,
+	useArchiveDiscount,
+	useDiscountById,
+	useDiscountVisibilityQuery,
+	useRestoreDiscount,
+} from "@/modules/discounts/discounts.queries";
+import {
 	buildInventoryDiscountEditRoute,
-	buildInventoryDiscountRestoreRoute,
 	normalizeDiscountReturnTo,
 	resolveInventoryDiscountDetailBackFallbackRoute,
 } from "@/modules/discounts/discounts.navigation";
 import type { Discount } from "@/modules/discounts/discounts.types";
+import { useAppToast } from "@/providers/AppToastProvider";
 import { formatMoney } from "@/shared/money/money.format";
 
 function formatDiscountValue(discount: Discount, currencyCode: string): string {
@@ -43,11 +48,18 @@ function formatDiscountValue(discount: Discount, currencyCode: string): string {
 	return `-${formatMoney({ currencyCode, amount: raw })}`;
 }
 
+function extractApiErrorMessage(error: unknown): string {
+	const data = (error as any)?.response?.data;
+	const msg = data?.message ?? data?.error?.message ?? (error as any)?.message ?? "Failed to update discount.";
+	return String(msg);
+}
+
 export default function InventoryDiscountDetailScreen() {
 	const router = useRouter();
 	const theme = useTheme();
 	const { currencyCode } = useActiveBusinessMeta();
-	const { busy } = useAppBusy();
+	const { busy, withBusy } = useAppBusy();
+	const { showError, showSuccess } = useAppToast();
 	const tabBarHeight = useBottomTabBarHeight();
 
 	const params = useLocalSearchParams<{ id?: string; returnTo?: string }>();
@@ -56,7 +68,9 @@ export default function InventoryDiscountDetailScreen() {
 
 	const navLockRef = useRef(false);
 	const [isNavLocked, setIsNavLocked] = useState(false);
-	const [pendingAction, setPendingAction] = useState<"edit" | "archive" | "restore" | "cancel" | null>(null);
+	const [pendingAction, setPendingAction] = useState<"edit" | "cancel" | null>(null);
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 	const lockNav = useCallback((ms = 650) => {
 		if (navLockRef.current) return false;
 		navLockRef.current = true;
@@ -71,6 +85,8 @@ export default function InventoryDiscountDetailScreen() {
 	const isUiDisabled = !!busy?.isBusy || isNavLocked;
 
 	const query = useDiscountById(id);
+	const archiveDiscount = useArchiveDiscount(id);
+	const restoreDiscount = useRestoreDiscount(id);
 	const visibilityQuery = useDiscountVisibilityQuery();
 	const hiddenDiscountIds = visibilityQuery.hiddenDiscountIds;
 	const discount = query.data ?? null;
@@ -103,19 +119,49 @@ export default function InventoryDiscountDetailScreen() {
 
 	const onArchivePress = useCallback(() => {
 		if (!discount || !canArchive || isUiDisabled) return;
-		if (!lockNav()) return;
-		setPendingAction("archive");
-		const route = buildInventoryDiscountArchiveRoute(discount.id, returnTo);
-		router.push(route as any);
-	}, [canArchive, discount, isUiDisabled, lockNav, returnTo, router]);
+		setIsArchiveConfirmOpen(true);
+	}, [canArchive, discount, isUiDisabled]);
 
 	const onRestorePress = useCallback(() => {
 		if (!discount || !canRestore || isUiDisabled) return;
-		if (!lockNav()) return;
-		setPendingAction("restore");
-		const route = buildInventoryDiscountRestoreRoute(discount.id, returnTo);
-		router.push(route as any);
-	}, [canRestore, discount, isUiDisabled, lockNav, returnTo, router]);
+		setIsRestoreConfirmOpen(true);
+	}, [canRestore, discount, isUiDisabled]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsArchiveConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const closeRestoreConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsRestoreConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!discount || !canArchive || isUiDisabled) return;
+		await withBusy("Archiving discount...", async () => {
+			try {
+				await archiveDiscount.mutateAsync();
+				setIsArchiveConfirmOpen(false);
+				showSuccess("Discount archived.");
+			} catch (error) {
+				showError(extractApiErrorMessage(error));
+			}
+		});
+	}, [archiveDiscount, canArchive, discount, isUiDisabled, showError, showSuccess, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
+		if (!discount || !canRestore || isUiDisabled) return;
+		await withBusy("Restoring discount...", async () => {
+			try {
+				await restoreDiscount.mutateAsync();
+				setIsRestoreConfirmOpen(false);
+				showSuccess("Discount restored.");
+			} catch (error) {
+				showError(extractApiErrorMessage(error));
+			}
+		});
+	}, [canRestore, discount, isUiDisabled, restoreDiscount, showError, showSuccess, withBusy]);
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const valueLabel = useMemo(() => {
@@ -319,7 +365,6 @@ export default function InventoryDiscountDetailScreen() {
 												intent='danger'
 												onPress={onArchivePress}
 												disabled={isUiDisabled}
-												loading={pendingAction === "archive" && isNavLocked}
 												accessibilityLabel='Archive discount'
 												accessibilityHint='Opens archive confirmation for this discount'
 												shape='pill'
@@ -368,7 +413,6 @@ export default function InventoryDiscountDetailScreen() {
 												<BAIButton
 													onPress={onRestorePress}
 													disabled={isUiDisabled}
-													loading={pendingAction === "restore" && isNavLocked}
 													accessibilityLabel='Restore discount'
 													accessibilityHint='Restores this archived discount'
 													shape='pill'
@@ -385,6 +429,24 @@ export default function InventoryDiscountDetailScreen() {
 						)}
 					</View>
 				</View>
+				<BAIConfirmArchiveModal
+					visible={isArchiveConfirmOpen}
+					entityLabel='discount'
+					entityName={discount?.name}
+					description='Archived discounts remain in history and are removed from new picker selections.'
+					onDismiss={closeArchiveConfirm}
+					onConfirm={onConfirmArchive}
+					disabled={isUiDisabled}
+				/>
+				<BAIConfirmRestoreModal
+					visible={isRestoreConfirmOpen}
+					entityLabel='discount'
+					entityName={discount?.name}
+					description='Restored discounts become active and selectable in pickers again.'
+					onDismiss={closeRestoreConfirm}
+					onConfirm={onConfirmRestore}
+					disabled={isUiDisabled}
+				/>
 			</BAIScreen>
 		</BAIInlineHeaderScaffold>
 	);

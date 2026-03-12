@@ -7,7 +7,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "react-native-paper";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Image as ExpoImage } from "expo-image";
@@ -15,6 +15,7 @@ import { FontAwesome6, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { BAIHeader } from "@/components/ui/BAIHeader";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
@@ -24,14 +25,19 @@ import { SettingsScreenLayout } from "@/components/settings/SettingsLayout";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { categoriesApi } from "@/modules/categories/categories.api";
+import { syncCategoryCaches } from "@/modules/categories/categories.cache";
 import { categoryKeys } from "@/modules/categories/categories.queryKeys";
 import type { Category } from "@/modules/categories/categories.types";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import type { InventoryProduct } from "@/modules/inventory/inventory.types";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
+import { useAppToast } from "@/providers/AppToastProvider";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
 
 const SETTINGS_CATEGORIES_ROUTE = "/(app)/(tabs)/settings/categories" as const;
+const CATEGORY_ARCHIVE_DESCRIPTION =
+	"Archived categories remain in history and are removed from new picker selections.";
+const CATEGORY_RESTORE_DESCRIPTION = "Restored categories become active and selectable in pickers again.";
 
 function extractApiErrorMessage(err: unknown): string {
 	const data = (err as any)?.response?.data;
@@ -121,8 +127,10 @@ function CategoryLinkedItemRow({
 
 export default function SettingsCategoryDetailScreen() {
 	const router = useRouter();
+	const qc = useQueryClient();
 	const theme = useTheme();
-	const { busy } = useAppBusy();
+	const { busy, withBusy } = useAppBusy();
+	const { showError, showSuccess } = useAppToast();
 	const { countryCode } = useActiveBusinessMeta();
 	const tabBarHeight = useBottomTabBarHeight();
 
@@ -131,6 +139,8 @@ export default function SettingsCategoryDetailScreen() {
 
 	const navLockRef = useRef(false);
 	const [isNavLocked, setIsNavLocked] = useState(false);
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 	const lockNav = useCallback((ms = 650) => {
 		if (navLockRef.current) return false;
 		navLockRef.current = true;
@@ -206,15 +216,53 @@ export default function SettingsCategoryDetailScreen() {
 
 	const onArchivePress = useCallback(() => {
 		if (!category || !canArchive || isUiDisabled) return;
-		if (!lockNav()) return;
-		router.push(`/(app)/(tabs)/settings/categories/${encodeURIComponent(category.id)}/archive` as any);
-	}, [canArchive, category, isUiDisabled, lockNav, router]);
+		setIsArchiveConfirmOpen(true);
+	}, [canArchive, category, isUiDisabled]);
 
 	const onRestorePress = useCallback(() => {
 		if (!category || !canRestore || isUiDisabled) return;
-		if (!lockNav()) return;
-		router.push(`/(app)/(tabs)/settings/categories/${encodeURIComponent(category.id)}/restore` as any);
-	}, [canRestore, category, isUiDisabled, lockNav, router]);
+		setIsRestoreConfirmOpen(true);
+	}, [canRestore, category, isUiDisabled]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsArchiveConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const closeRestoreConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsRestoreConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!category || !canArchive || isUiDisabled) return;
+		await withBusy("Archiving category...", async () => {
+			try {
+				await categoriesApi.archive(category.id);
+				syncCategoryCaches(qc, { ...category, isActive: false });
+				void qc.invalidateQueries({ queryKey: categoryKeys.root() });
+				setIsArchiveConfirmOpen(false);
+				showSuccess("Category archived.");
+			} catch (err) {
+				showError(extractApiErrorMessage(err));
+			}
+		});
+	}, [canArchive, category, isUiDisabled, qc, showError, showSuccess, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
+		if (!category || !canRestore || isUiDisabled) return;
+		await withBusy("Restoring category...", async () => {
+			try {
+				await categoriesApi.restore(category.id);
+				syncCategoryCaches(qc, { ...category, isActive: true });
+				void qc.invalidateQueries({ queryKey: categoryKeys.root() });
+				setIsRestoreConfirmOpen(false);
+				showSuccess("Category restored.");
+			} catch (err) {
+				showError(extractApiErrorMessage(err));
+			}
+		});
+	}, [canRestore, category, isUiDisabled, qc, showError, showSuccess, withBusy]);
 
 	const onOpenItem = useCallback(
 		(productId: string) => {
@@ -227,9 +275,9 @@ export default function SettingsCategoryDetailScreen() {
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const colorHex = category?.color?.trim() || "";
-	return (
-		<>
-			<BAIScreen padded={false} safeTop={false} safeBottom={false} style={styles.root}>
+		return (
+			<>
+				<BAIScreen padded={false} safeTop={false} safeBottom={false} style={styles.root}>
 				<BAIHeader title='Category Details' variant='back' onLeftPress={onBack} disabled={isUiDisabled} />
 				<SettingsScreenLayout
 					screenStyle={[
@@ -453,10 +501,28 @@ export default function SettingsCategoryDetailScreen() {
 							</>
 						) : null}
 					</BAISurface>
-				</SettingsScreenLayout>
-			</BAIScreen>
-		</>
-	);
+					</SettingsScreenLayout>
+					<BAIConfirmArchiveModal
+						visible={isArchiveConfirmOpen}
+						entityLabel='category'
+						entityName={category?.name}
+						description={CATEGORY_ARCHIVE_DESCRIPTION}
+						onDismiss={closeArchiveConfirm}
+						onConfirm={onConfirmArchive}
+						disabled={isUiDisabled}
+					/>
+					<BAIConfirmRestoreModal
+						visible={isRestoreConfirmOpen}
+						entityLabel='category'
+						entityName={category?.name}
+						description={CATEGORY_RESTORE_DESCRIPTION}
+						onDismiss={closeRestoreConfirm}
+						onConfirm={onConfirmRestore}
+						disabled={isUiDisabled}
+					/>
+				</BAIScreen>
+			</>
+		);
 }
 
 const styles = StyleSheet.create({

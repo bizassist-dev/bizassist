@@ -3,7 +3,7 @@
 
 import { FontAwesome6 } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
@@ -12,6 +12,7 @@ import { useTheme } from "react-native-paper";
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAITimeAgo } from "@/components/system/BAITimeAgo";
 import { BAICTAButton, BAICTAPillButton } from "@/components/ui/BAICTAButton";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { BAIInlineHeaderScaffold } from "@/components/ui/BAIInlineHeaderScaffold";
 import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
@@ -23,6 +24,7 @@ import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta"
 import { DEFAULT_SERVICE_TOTAL_DURATION_MINUTES } from "@/modules/inventory/drafts/serviceCreateDraft";
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
+import { invalidateInventoryAfterMutation } from "@/modules/inventory/inventory.invalidate";
 import { LOCAL_URI_KEY } from "@/modules/inventory/posTile.contract";
 import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
@@ -33,6 +35,8 @@ import { useNavLock } from "@/shared/hooks/useNavLock";
 import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 import { formatMoney } from "@/shared/money/money.format";
 import { sanitizeLabelInput, sanitizeProductNameInput } from "@/shared/validation/sanitize";
+import { useAppBusy } from "@/hooks/useAppBusy";
+import { useAppToast } from "@/providers/AppToastProvider";
 
 function isMeaningfulDetailText(v: unknown): v is string {
 	if (typeof v !== "string") return false;
@@ -54,6 +58,12 @@ function formatReadableTime(value: unknown): string | null {
 
 function formatUnitLabel(_p: any): string {
 	return "Time";
+}
+
+function extractApiErrorMessage(err: unknown): string {
+	const data = (err as any)?.response?.data;
+	const msg = data?.message ?? data?.error?.message ?? (err as any)?.message ?? "Operation failed. Please try again.";
+	return String(msg);
 }
 
 function normalizeNonNegativeMinutes(value: unknown): number | null {
@@ -138,9 +148,12 @@ export default function InventoryServiceDetailScreen({
 	routeScope?: InventoryRouteScope;
 }) {
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const theme = useTheme();
 	const tabBarHeight = useBottomTabBarHeight();
 	const { canNavigate, safePush } = useNavLock({ lockMs: 650 });
+	const { busy, withBusy } = useAppBusy();
+	const { showError, showSuccess } = useAppToast();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 	const { currencyCode } = useActiveBusinessMeta();
 	const operationalRefreshInterval = useOperationalQueryAutoRefresh();
@@ -149,6 +162,8 @@ export default function InventoryServiceDetailScreen({
 	const productId = useMemo(() => String(params.id ?? "").trim(), [params.id]);
 	const incomingLocalImageUri = useMemo(() => String(params[LOCAL_URI_KEY] ?? "").trim(), [params]);
 	const [optimisticImageUri, setOptimisticImageUri] = useState("");
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 
 	const detailQuery = useQuery<InventoryProductDetail>({
 		queryKey: inventoryKeys.productDetail(productId),
@@ -286,14 +301,60 @@ export default function InventoryServiceDetailScreen({
 	}, [productId, router, safePush, toScopedRoute]);
 
 	const onArchiveService = useCallback(() => {
-		if (!productId) return;
-		safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/services/${encodeURIComponent(productId)}/archive`));
-	}, [productId, router, safePush, toScopedRoute]);
+		if (!productId || !product || product.isActive === false || busy.isBusy) return;
+		setIsArchiveConfirmOpen(true);
+	}, [busy.isBusy, product, productId]);
 
 	const onRestoreService = useCallback(() => {
-		if (!productId) return;
-		safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/services/${encodeURIComponent(productId)}/restore`));
-	}, [productId, router, safePush, toScopedRoute]);
+		if (!productId || !product || product.isActive !== false || busy.isBusy) return;
+		setIsRestoreConfirmOpen(true);
+	}, [busy.isBusy, product, productId]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		if (busy.isBusy) return;
+		setIsArchiveConfirmOpen(false);
+	}, [busy.isBusy]);
+
+	const closeRestoreConfirm = useCallback(() => {
+		if (busy.isBusy) return;
+		setIsRestoreConfirmOpen(false);
+	}, [busy.isBusy]);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!product || product.isActive === false || busy.isBusy) return;
+		await withBusy("Archiving service...", async () => {
+			try {
+				await inventoryApi.archiveProduct(product.id);
+				invalidateInventoryAfterMutation(queryClient, { productId });
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+					queryClient.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
+				]);
+				setIsArchiveConfirmOpen(false);
+				showSuccess("Service archived.");
+			} catch (error) {
+				showError(extractApiErrorMessage(error));
+			}
+		});
+	}, [busy.isBusy, product, productId, queryClient, showError, showSuccess, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
+		if (!product || product.isActive !== false || busy.isBusy) return;
+		await withBusy("Restoring service...", async () => {
+			try {
+				await inventoryApi.restoreProduct(product.id);
+				invalidateInventoryAfterMutation(queryClient, { productId });
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+					queryClient.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
+				]);
+				setIsRestoreConfirmOpen(false);
+				showSuccess("Service restored.");
+			} catch (error) {
+				showError(extractApiErrorMessage(error));
+			}
+		});
+	}, [busy.isBusy, product, productId, queryClient, showError, showSuccess, withBusy]);
 
 	const details = useMemo(() => {
 		if (!product) return [];
@@ -660,6 +721,24 @@ export default function InventoryServiceDetailScreen({
 						)}
 					</ScrollView>
 				</BAISurface>
+				<BAIConfirmArchiveModal
+					visible={isArchiveConfirmOpen}
+					entityLabel='service'
+					entityName={product?.name}
+					description='Archived services stay in historical records and are removed from active lists and POS.'
+					onDismiss={closeArchiveConfirm}
+					onConfirm={onConfirmArchive}
+					disabled={busy.isBusy}
+				/>
+				<BAIConfirmRestoreModal
+					visible={isRestoreConfirmOpen}
+					entityLabel='service'
+					entityName={product?.name}
+					description='Restored services return to active lists and can be sold in POS again.'
+					onDismiss={closeRestoreConfirm}
+					onConfirm={onConfirmRestore}
+					disabled={busy.isBusy}
+				/>
 			</BAIScreen>
 		</BAIInlineHeaderScaffold>
 	);

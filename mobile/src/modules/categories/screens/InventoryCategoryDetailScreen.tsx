@@ -7,14 +7,14 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "react-native-paper";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Image as ExpoImage } from "expo-image";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { BAIHeader } from "@/components/ui/BAIHeader";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
@@ -23,14 +23,19 @@ import { BAIText } from "@/components/ui/BAIText";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { categoriesApi } from "@/modules/categories/categories.api";
+import { syncCategoryCaches } from "@/modules/categories/categories.cache";
 import { categoryKeys } from "@/modules/categories/categories.queryKeys";
 import type { Category } from "@/modules/categories/categories.types";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import type { InventoryProduct } from "@/modules/inventory/inventory.types";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
+import { useAppToast } from "@/providers/AppToastProvider";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
 
 const INVENTORY_CATEGORIES_ROUTE = "/(app)/(tabs)/inventory/categories/category.ledger" as const;
+const CATEGORY_ARCHIVE_DESCRIPTION =
+	"Archived categories remain in history and are removed from new picker selections.";
+const CATEGORY_RESTORE_DESCRIPTION = "Restored categories become active and selectable in pickers again.";
 
 function extractApiErrorMessage(err: unknown): string {
 	const data = (err as any)?.response?.data;
@@ -129,16 +134,19 @@ function CategoryLinkedItemRow({
 
 export default function InventoryCategoryDetailScreen() {
 	const router = useRouter();
+	const qc = useQueryClient();
 	const theme = useTheme();
-	const { busy } = useAppBusy();
+	const { busy, withBusy } = useAppBusy();
+	const { showError, showSuccess } = useAppToast();
 	const { countryCode } = useActiveBusinessMeta();
-	const tabBarHeight = useBottomTabBarHeight();
 
 	const params = useLocalSearchParams<{ id?: string }>();
 	const id = String(params.id ?? "");
 
 	const navLockRef = useRef(false);
 	const [isNavLocked, setIsNavLocked] = useState(false);
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 	const lockNav = useCallback((ms = 650) => {
 		if (navLockRef.current) return false;
 		navLockRef.current = true;
@@ -199,10 +207,6 @@ export default function InventoryCategoryDetailScreen() {
 	const onBack = useCallback(() => {
 		if (isUiDisabled) return;
 		if (!lockNav()) return;
-		if (router.canGoBack?.()) {
-			router.back();
-			return;
-		}
 		router.replace(INVENTORY_CATEGORIES_ROUTE as any);
 	}, [isUiDisabled, lockNav, router]);
 
@@ -214,15 +218,53 @@ export default function InventoryCategoryDetailScreen() {
 
 	const onArchivePress = useCallback(() => {
 		if (!category || !canArchive || isUiDisabled) return;
-		if (!lockNav()) return;
-		router.push(`/(app)/(tabs)/inventory/categories/${encodeURIComponent(category.id)}/archive` as any);
-	}, [canArchive, category, isUiDisabled, lockNav, router]);
+		setIsArchiveConfirmOpen(true);
+	}, [canArchive, category, isUiDisabled]);
 
 	const onRestorePress = useCallback(() => {
 		if (!category || !canRestore || isUiDisabled) return;
-		if (!lockNav()) return;
-		router.push(`/(app)/(tabs)/inventory/categories/${encodeURIComponent(category.id)}/restore` as any);
-	}, [canRestore, category, isUiDisabled, lockNav, router]);
+		setIsRestoreConfirmOpen(true);
+	}, [canRestore, category, isUiDisabled]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsArchiveConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const closeRestoreConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsRestoreConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!category || !canArchive || isUiDisabled) return;
+		await withBusy("Archiving category...", async () => {
+			try {
+				await categoriesApi.archive(category.id);
+				syncCategoryCaches(qc, { ...category, isActive: false });
+				void qc.invalidateQueries({ queryKey: categoryKeys.root() });
+				setIsArchiveConfirmOpen(false);
+				showSuccess("Category archived.");
+			} catch (err) {
+				showError(extractApiErrorMessage(err));
+			}
+		});
+	}, [canArchive, category, isUiDisabled, qc, showError, showSuccess, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
+		if (!category || !canRestore || isUiDisabled) return;
+		await withBusy("Restoring category...", async () => {
+			try {
+				await categoriesApi.restore(category.id);
+				syncCategoryCaches(qc, { ...category, isActive: true });
+				void qc.invalidateQueries({ queryKey: categoryKeys.root() });
+				setIsRestoreConfirmOpen(false);
+				showSuccess("Category restored.");
+			} catch (err) {
+				showError(extractApiErrorMessage(err));
+			}
+		});
+	}, [canRestore, category, isUiDisabled, qc, showError, showSuccess, withBusy]);
 
 	const onOpenItem = useCallback(
 		(productId: string) => {
@@ -239,20 +281,10 @@ export default function InventoryCategoryDetailScreen() {
 	const colorHex = category?.color?.trim() || "";
 	return (
 		<>
-			<BAIScreen padded={false} safeTop={false} safeBottom={false} style={styles.root}>
+			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} safeAreaGradientBottom style={styles.root}>
 				<BAIHeader title='Category Details' variant='back' onLeftPress={onBack} disabled={isUiDisabled} />
-				<View
-					style={[
-						styles.screen,
-						styles.scrollContent,
-						{ backgroundColor: theme.colors.background, paddingBottom: tabBarHeight + 14 },
-					]}
-				>
-					<BAISurface style={[styles.card, { borderColor }]} padded bordered>
-						<BAIText variant='caption' muted>
-							Review category status and linked items.
-						</BAIText>
-
+				<View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
+					<View style={styles.card}>
 						{q.isLoading ? (
 							<View style={styles.center}>
 								<BAIActivityIndicator />
@@ -285,139 +317,142 @@ export default function InventoryCategoryDetailScreen() {
 
 						{category ? (
 							<>
-								<BAISurface
-									style={[
-										styles.summaryCard,
-										{
-											borderColor,
-											backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-										},
-									]}
-									padded
-									bordered
-								>
-									<View style={styles.summaryHeader}>
-										<View style={styles.summaryIdentity}>
-											<View
-												style={[
-													styles.summarySwatch,
-													{
-														backgroundColor: colorHex || (theme.colors.surfaceDisabled ?? theme.colors.surface),
-														borderColor,
-													},
-												]}
-											/>
-											<View style={styles.summaryText}>
-												<BAIText variant='subtitle' numberOfLines={1} ellipsizeMode='tail'>
-													{category.name}
-												</BAIText>
-												<BAIText variant='caption' muted>
-													Category overview
-												</BAIText>
-											</View>
-										</View>
-									</View>
-
-									<View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
-
-									<View style={styles.metaRow}>
-										<BAIText variant='caption' muted style={styles.metaLabel}>
-											Status:
-										</BAIText>
-										<View style={styles.metaValueRow}>
-											<View
-												style={[
-													styles.statusPill,
-													{
-														borderColor,
-														backgroundColor: category.isActive
-															? (theme.colors.primaryContainer ?? theme.colors.surface)
-															: (theme.colors.errorContainer ?? theme.colors.surface),
-													},
-												]}
-											>
-												<BAIText variant='caption' style={styles.statusPillText}>
-													{category.isActive ? "Active" : "Archived"}
-												</BAIText>
-											</View>
-										</View>
-									</View>
-								</BAISurface>
-
-								<View style={styles.actionRow}>
-									{canArchive ? (
-										<BAIButton
-											variant='outline'
-											intent='danger'
-											onPress={onArchivePress}
-											disabled={isUiDisabled}
-											shape='pill'
-											widthPreset='standard'
-											style={styles.actionButton}
-										>
-											Archive
-										</BAIButton>
-									) : null}
-
-									{canEdit ? (
-										<BAIButton
-											variant='solid'
-											onPress={onEdit}
-											disabled={isUiDisabled}
-											shape='pill'
-											widthPreset='standard'
-											style={styles.actionButton}
-										>
-											Edit
-										</BAIButton>
-									) : null}
-
-									{canRestore ? (
-										<>
-											<BAIButton
-												variant='outline'
-												intent='neutral'
-												onPress={onBack}
-												disabled={isUiDisabled}
-												shape='pill'
-												widthPreset='standard'
-												style={styles.actionButton}
-											>
-												Cancel
-											</BAIButton>
-											<BAIButton
-												onPress={onRestorePress}
-												disabled={isUiDisabled}
-												shape='pill'
-												widthPreset='standard'
-												style={styles.actionButton}
-											>
-												Restore
-											</BAIButton>
-										</>
-									) : null}
-								</View>
-
-								<View style={{ height: 0 }} />
-								<View style={styles.itemsHeader}>
-									<BAIText variant='subtitle'>Items in this category</BAIText>
-									<View
+								<BAISurface style={[styles.heroCard, { borderColor }]} padded bordered>
+									<BAISurface
 										style={[
-											styles.countPill,
+											styles.summaryCard,
 											{
 												borderColor,
 												backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
 											},
 										]}
+										padded
+										bordered
 									>
-										<BAIText variant='caption' muted>
-											{formatCompactCount(linkedItemsCount, countryCode)} {linkedItemsLabel}
-										</BAIText>
+										<View style={styles.summaryHeader}>
+											<View style={styles.summaryIdentity}>
+												<View
+													style={[
+														styles.summarySwatch,
+														{
+															backgroundColor: colorHex || (theme.colors.surfaceDisabled ?? theme.colors.surface),
+															borderColor,
+														},
+													]}
+												/>
+												<View style={styles.summaryText}>
+													<BAIText variant='subtitle' numberOfLines={1} ellipsizeMode='tail'>
+														{category.name}
+													</BAIText>
+													<BAIText variant='caption' muted>
+														Category overview
+													</BAIText>
+												</View>
+											</View>
+										</View>
+
+										<View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
+
+										<View style={styles.metaRow}>
+											<BAIText variant='caption' muted style={styles.metaLabel}>
+												Status:
+											</BAIText>
+											<View style={styles.metaValueRow}>
+												<View
+													style={[
+														styles.statusPill,
+														{
+															borderColor,
+															backgroundColor: category.isActive
+																? (theme.colors.primaryContainer ?? theme.colors.surface)
+																: (theme.colors.errorContainer ?? theme.colors.surface),
+														},
+													]}
+												>
+													<BAIText variant='caption' style={styles.statusPillText}>
+														{category.isActive ? "Active" : "Archived"}
+													</BAIText>
+												</View>
+											</View>
+										</View>
+									</BAISurface>
+
+									<View style={styles.actionRow}>
+										{canArchive ? (
+											<BAIButton
+												variant='outline'
+												intent='danger'
+												onPress={onArchivePress}
+												disabled={isUiDisabled}
+												shape='pill'
+												widthPreset='standard'
+												style={styles.actionButton}
+											>
+												Archive
+											</BAIButton>
+										) : null}
+
+										{canEdit ? (
+											<BAIButton
+												variant='solid'
+												onPress={onEdit}
+												disabled={isUiDisabled}
+												shape='pill'
+												widthPreset='standard'
+												style={styles.actionButton}
+											>
+												Edit
+											</BAIButton>
+										) : null}
+
+										{canRestore ? (
+											<>
+												<BAIButton
+													variant='outline'
+													intent='neutral'
+													onPress={onBack}
+													disabled={isUiDisabled}
+													shape='pill'
+													widthPreset='standard'
+													style={styles.actionButton}
+												>
+													Cancel
+												</BAIButton>
+												<BAIButton
+													onPress={onRestorePress}
+													disabled={isUiDisabled}
+													shape='pill'
+													widthPreset='standard'
+													style={styles.actionButton}
+												>
+													Restore
+												</BAIButton>
+											</>
+										) : null}
 									</View>
+								</BAISurface>
+
+								<View style={styles.itemsSectionHeader}>
+									<View style={styles.itemsHeader}>
+										<BAIText variant='subtitle'>Items in this category</BAIText>
+										<View
+											style={[
+												styles.countPill,
+												{
+													borderColor,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+											]}
+										>
+											<BAIText variant='caption' muted>
+												{formatCompactCount(linkedItemsCount, countryCode)} {linkedItemsLabel}
+											</BAIText>
+										</View>
+									</View>
+									<BAIText variant='caption' muted style={styles.itemsSubtitle}>
+										Read-only context. Archived categories stay linked.
+									</BAIText>
 								</View>
-								<BAIText variant='caption' muted style={styles.itemsSubtitle}>
-									Read-only context. Archived categories stay linked.
-								</BAIText>
 
 								{productsQuery.isLoading ? (
 									<View style={styles.center}>
@@ -440,13 +475,14 @@ export default function InventoryCategoryDetailScreen() {
 										</BAIText>
 									</View>
 								) : (
-									<View style={styles.itemsListWrap}>
-										<ScrollView
-											style={styles.itemsScroll}
-											contentContainerStyle={styles.itemsContent}
-											nestedScrollEnabled
-											showsVerticalScrollIndicator={false}
-										>
+									<ScrollView
+										style={styles.itemsScroll}
+										contentContainerStyle={styles.itemsContent}
+										showsVerticalScrollIndicator={false}
+										keyboardShouldPersistTaps='handled'
+										keyboardDismissMode='on-drag'
+									>
+										<View style={styles.itemsListWrap}>
 											{productsInCategory.map((p) => (
 												<CategoryLinkedItemRow
 													key={p.id}
@@ -456,13 +492,31 @@ export default function InventoryCategoryDetailScreen() {
 													disabled={isUiDisabled}
 												/>
 											))}
-										</ScrollView>
-									</View>
+										</View>
+									</ScrollView>
 								)}
 							</>
 						) : null}
-					</BAISurface>
+					</View>
 				</View>
+				<BAIConfirmArchiveModal
+					visible={isArchiveConfirmOpen}
+					entityLabel='category'
+					entityName={category?.name}
+					description={CATEGORY_ARCHIVE_DESCRIPTION}
+					onDismiss={closeArchiveConfirm}
+					onConfirm={onConfirmArchive}
+					disabled={isUiDisabled}
+				/>
+				<BAIConfirmRestoreModal
+					visible={isRestoreConfirmOpen}
+					entityLabel='category'
+					entityName={category?.name}
+					description={CATEGORY_RESTORE_DESCRIPTION}
+					onDismiss={closeRestoreConfirm}
+					onConfirm={onConfirmRestore}
+					disabled={isUiDisabled}
+				/>
 			</BAIScreen>
 		</>
 	);
@@ -472,19 +526,29 @@ const styles = StyleSheet.create({
 	root: { flex: 1 },
 	screen: {
 		flex: 1,
-		paddingHorizontal: 8,
+		paddingHorizontal: 10,
+		paddingBottom: 0,
 	},
 	scrollContent: {
 		paddingTop: 0,
 	},
 	card: {
 		flex: 1,
-		borderWidth: 1,
+		gap: 8,
+		paddingHorizontal: 0,
+		paddingTop: 0,
+	},
+	heroCard: {
 		borderRadius: 18,
-		gap: 10,
+		gap: 6,
+		paddingHorizontal: 10,
+		paddingTop: 10,
+		paddingBottom: 10,
+		marginBottom: 0,
 	},
 	summaryCard: {
 		borderRadius: 16,
+		padding: 14,
 	},
 	summaryHeader: {
 		flexDirection: "row",
@@ -578,19 +642,23 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 		gap: 10,
-		marginTop: -10,
+		marginTop: -6,
 	},
 	actionButton: {
 		flex: 1,
+	},
+	itemsSectionHeader: {
+		gap: 2,
 	},
 	itemsHeader: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 		gap: 8,
+		marginTop: 0,
 	},
 	itemsSubtitle: {
-		marginTop: -10,
+		marginTop: -6,
 	},
 	countPill: {
 		borderWidth: 1,
@@ -604,17 +672,16 @@ const styles = StyleSheet.create({
 	emptyState: {
 		paddingVertical: 12,
 	},
-	itemsListWrap: {
-		flex: 1,
-		minHeight: 220,
-		borderRadius: 0,
-		overflow: "hidden",
-	},
 	itemsScroll: {
 		flex: 1,
+		minHeight: 0,
 	},
 	itemsContent: {
+		paddingBottom: 116,
+	},
+	itemsListWrap: {
 		gap: 8,
+		borderRadius: 0,
 		paddingBottom: 4,
 	},
 	itemRow: {

@@ -2,7 +2,7 @@
 // path: app/(app)/(tabs)/inventory/products/pos-tile-recents.phone.tsx
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { AppState, FlatList, Pressable, StyleSheet, View, type ImageSourcePropType } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
@@ -40,8 +40,29 @@ import {
 } from "@/modules/inventory/posTile.contract";
 
 type MediaAsset = MediaLibrary.Asset;
+type GalleryItem =
+	| {
+			kind: "asset";
+			id: string;
+			asset: MediaAsset;
+			source: { uri: string };
+	  }
+	| {
+			kind: "mock";
+			id: string;
+			source: ImageSourcePropType;
+	  };
 
 const RECENTS_HARD_CAP = 60; // masterplan: “Recent Photos” grid uses hard cap of 60 newest images.
+const DEV_MOCK_PHOTO_REPEAT_COUNT = 18;
+const DEV_MOCK_PHOTO_SOURCES: ImageSourcePropType[] = [
+	require("../../../../assets/images/logo1.jpg"),
+	require("../../../../assets/images/logo1 copy.jpg"),
+	require("../../../../assets/images/logo1.png"),
+	require("../../../../assets/images/BizAssist-logo.png"),
+	require("../../../../assets/images/BizAssist-logo1.png"),
+	require("../../../../assets/images/BizAssist-logo2.png"),
+];
 
 function safeString(v: unknown): string {
 	return typeof v === "string" ? v : String(v ?? "");
@@ -102,6 +123,25 @@ export default function PosTileRecentsPhone({ routeScope = "inventory" }: { rout
 
 	const [selectedId, setSelectedId] = useState<string>("");
 	const selectedAsset = useMemo(() => assets.find((a) => a.id === selectedId) ?? null, [assets, selectedId]);
+	const mockGalleryItems = useMemo<GalleryItem[]>(() => {
+		if (!__DEV__) return [];
+
+		return Array.from({ length: DEV_MOCK_PHOTO_REPEAT_COUNT }, (_, index) => ({
+			kind: "mock" as const,
+			id: `mock-photo-${index + 1}`,
+			source: DEV_MOCK_PHOTO_SOURCES[index % DEV_MOCK_PHOTO_SOURCES.length],
+		}));
+	}, []);
+	const galleryItems = useMemo<GalleryItem[]>(() => {
+		const assetItems: GalleryItem[] = assets.map((asset) => ({
+			kind: "asset",
+			id: asset.id,
+			asset,
+			source: { uri: asset.uri },
+		}));
+
+		return __DEV__ ? [...assetItems, ...mockGalleryItems] : assetItems;
+	}, [assets, mockGalleryItems]);
 
 	// If selection disappears due to refresh, clear it.
 	useEffect(() => {
@@ -324,15 +364,17 @@ export default function PosTileRecentsPhone({ routeScope = "inventory" }: { rout
 			<BAIScreen
 				padded={false}
 				safeTop={false}
+				safeBottom={false}
+				safeAreaGradientBottom
 				tabbed
 				style={[styles.root, { backgroundColor: theme.colors.background }]}
 			>
 				<View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-					<BAISurface style={[styles.card, { borderColor }]} padded>
+					<BAISurface style={[styles.actionCard, { borderColor }]} padded={false} variant='interactive'>
 						<View style={styles.topActions}>
 							<BAIButton
 								intent='primary'
-								variant='outline'
+								variant='solid'
 								shape='pill'
 								size='sm'
 								widthPreset='standard'
@@ -355,78 +397,75 @@ export default function PosTileRecentsPhone({ routeScope = "inventory" }: { rout
 								Next
 							</BAIButton>
 						</View>
-
-						{!hasPermission ? (
-							<View style={styles.center}>
-								<BAIText variant='title'>Allow Photo Access</BAIText>
-								<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
-									We need access to your photo library to choose a POS tile photo.
-								</BAIText>
-								<BAIButton
-									intent='primary'
-									variant='solid'
-									shape='pill'
-									onPress={onRequestPermission}
-									style={{ marginTop: 12 }}
-								>
-									Grant Access
-								</BAIButton>
-								{isPermissionBlocked ? (
-									<BAIButton
-										intent='primary'
-										variant='outline'
-										shape='pill'
-										onPress={onOpenSettings}
-										style={{ marginTop: 10 }}
-									>
-										Open Settings
-									</BAIButton>
-								) : null}
-							</View>
-						) : assetsQuery.isLoading ? (
-							<View style={styles.center}>
-								<BAIActivityIndicator />
-							</View>
-						) : assetsQuery.isError ? (
-							<View style={styles.center}>
-								<BAIText variant='title'>Unable to Load Photos</BAIText>
-								<BAIRetryButton onPress={() => assetsQuery.refetch()} style={{ marginTop: 12 }} />
-							</View>
-						) : assets.length === 0 ? (
-							<View style={styles.center}>
-								<BAIText variant='title'>No Photos Found</BAIText>
-								<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
-									Add photos to your device, then try again.
-								</BAIText>
-							</View>
-						) : (
-							<FlatList
-								data={assets}
-								keyExtractor={(item) => item.id}
-								numColumns={3}
-								style={styles.gridList}
-								contentContainerStyle={styles.grid}
-								columnWrapperStyle={styles.gridRow}
-								showsVerticalScrollIndicator={false}
-								renderItem={({ item }) => {
-									const selected = item.id === selectedId;
-									return (
-										<Pressable
-											onPress={() => setSelectedId(item.id)}
-											style={[styles.tile, { borderColor: selected ? theme.colors.primary : borderColor }]}
-										>
-											<Image source={{ uri: item.uri }} style={styles.tileImage} contentFit='cover' />
-											{selected ? (
-												<View style={styles.selectedBadge}>
-													<MaterialCommunityIcons name='check' size={16} color='#FFFFFF' />
-												</View>
-											) : null}
-										</Pressable>
-									);
-								}}
-							/>
-						)}
 					</BAISurface>
+
+					{!hasPermission ? (
+						<View style={styles.center}>
+							<BAIText variant='title'>Allow Photo Access</BAIText>
+							<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
+								We need access to your photo library to choose a POS tile photo.
+							</BAIText>
+							<BAIButton intent='primary' variant='solid' onPress={onRequestPermission} style={{ marginTop: 12 }}>
+								Grant Access
+							</BAIButton>
+							{isPermissionBlocked ? (
+								<BAIButton intent='primary' variant='outline' onPress={onOpenSettings} style={{ marginTop: 10 }}>
+									Open Settings
+								</BAIButton>
+							) : null}
+						</View>
+					) : assetsQuery.isLoading ? (
+						<View style={styles.center}>
+							<BAIActivityIndicator />
+						</View>
+					) : assetsQuery.isError ? (
+						<View style={styles.center}>
+							<BAIText variant='title'>Unable to Load Photos</BAIText>
+							<BAIRetryButton onPress={() => assetsQuery.refetch()} style={{ marginTop: 12 }} />
+						</View>
+					) : galleryItems.length === 0 ? (
+						<View style={styles.center}>
+							<BAIText variant='title'>No Photos Found</BAIText>
+							<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
+								Add photos to your device, then try again.
+							</BAIText>
+						</View>
+					) : (
+						<FlatList
+							data={galleryItems}
+							keyExtractor={(item) => item.id}
+							numColumns={3}
+							style={styles.gridList}
+							contentContainerStyle={styles.grid}
+							columnWrapperStyle={styles.gridRow}
+							showsVerticalScrollIndicator={false}
+							renderItem={({ item }) => {
+								const selected = item.kind === "asset" && item.id === selectedId;
+								const isMock = item.kind === "mock";
+								return (
+									<Pressable
+										onPress={isMock ? undefined : () => setSelectedId(item.id)}
+										disabled={isMock}
+										style={[styles.tile, { borderColor: selected ? theme.colors.primary : borderColor }]}
+									>
+										<Image source={item.source} style={styles.tileImage} contentFit='cover' />
+										{isMock ? (
+											<View style={styles.mockBadge}>
+												<BAIText variant='caption' style={styles.mockBadgeText}>
+													Mock
+												</BAIText>
+											</View>
+										) : null}
+										{selected ? (
+											<View style={styles.selectedBadge}>
+												<MaterialCommunityIcons name='check' size={16} color='#FFFFFF' />
+											</View>
+										) : null}
+									</Pressable>
+								);
+							}}
+						/>
+					)}
 				</View>
 			</BAIScreen>
 
@@ -444,21 +483,25 @@ export default function PosTileRecentsPhone({ routeScope = "inventory" }: { rout
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12 },
-	card: { borderWidth: 1, borderRadius: 24, flex: 1 },
+	screen: { flex: 1, paddingHorizontal: 12, gap: 10 },
+	actionCard: {
+		borderWidth: 1,
+		borderRadius: 24,
+		padding: 12,
+		gap: 10,
+		marginBottom: 0,
+	},
 	topActions: {
 		flexDirection: "row",
-		justifyContent: "flex-end",
 		gap: 10,
-		marginBottom: 12,
 	},
 	center: { alignItems: "center", justifyContent: "center", paddingVertical: 24 },
 	gridList: {
 		flex: 1,
 		minHeight: 0,
 	},
-	grid: { paddingTop: 6, paddingBottom: 4 },
-	gridRow: { gap: 10, marginBottom: 10 },
+	grid: { paddingTop: 6, paddingBottom: 4, alignItems: "center" },
+	gridRow: { gap: 10, marginBottom: 10, justifyContent: "center" },
 	tile: {
 		width: "31%",
 		aspectRatio: 1,
@@ -467,6 +510,19 @@ const styles = StyleSheet.create({
 		overflow: "hidden",
 	},
 	tileImage: { width: "100%", height: "100%" },
+	mockBadge: {
+		position: "absolute",
+		left: 6,
+		top: 6,
+		paddingHorizontal: 6,
+		paddingVertical: 3,
+		borderRadius: 999,
+		backgroundColor: "rgba(17,24,39,0.78)",
+	},
+	mockBadgeText: {
+		color: "#FFFFFF",
+		fontWeight: "700",
+	},
 	selectedBadge: {
 		position: "absolute",
 		right: 6,

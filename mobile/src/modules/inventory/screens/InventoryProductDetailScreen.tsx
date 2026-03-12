@@ -1,7 +1,7 @@
 // BizAssist_mobile
 // path: src/modules/inventory/screens/InventoryProductDetailScreen.tsx
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -13,6 +13,7 @@ import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAITimeAgo } from "@/components/system/BAITimeAgo";
 import { BAIButton } from "@/components/ui/BAIButton";
 import { BAICTAPillButton } from "@/components/ui/BAICTAButton";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
@@ -27,6 +28,7 @@ import type { Category } from "@/modules/categories/categories.types";
 import { InventoryMovementRow } from "@/modules/inventory/components/InventoryMovementRow";
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
+import { invalidateInventoryAfterMutation } from "@/modules/inventory/inventory.invalidate";
 import { useProductCreateDraft } from "@/modules/inventory/drafts/useProductCreateDraft";
 import { LOCAL_URI_KEY } from "@/modules/inventory/posTile.contract";
 import {
@@ -52,6 +54,8 @@ import {
 import { useNavLock } from "@/shared/hooks/useNavLock";
 import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 import { sanitizeLabelInput, sanitizeProductNameInput } from "@/shared/validation/sanitize";
+import { useAppBusy } from "@/hooks/useAppBusy";
+import { useAppToast } from "@/providers/AppToastProvider";
 
 function extractApiErrorMessage(err: any): string {
 	const data = err?.response?.data;
@@ -398,9 +402,12 @@ export default function InventoryProductDetailScreen({
 	routeScope?: InventoryRouteScope;
 }) {
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const theme = useTheme();
 	const tabBarHeight = useBottomTabBarHeight();
 	const { canNavigate, safePush } = useNavLock({ lockMs: 650 });
+	const { busy, withBusy } = useAppBusy();
+	const { showError, showSuccess } = useAppToast();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 	const rootRoute = useMemo(() => inventoryScopeRoot(routeScope), [routeScope]);
 	const { currencyCode } = useActiveBusinessMeta();
@@ -413,6 +420,8 @@ export default function InventoryProductDetailScreen({
 	const { patch: patchOptionsDraft } = useProductCreateDraft(optionsDraftId || undefined);
 	const enabled = !!productId;
 	const [optimisticImageUri, setOptimisticImageUri] = useState("");
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 
 	const productDetailQuery = useQuery<InventoryProductDetail>({
 		queryKey: inventoryKeys.productDetail(productId),
@@ -699,14 +708,60 @@ export default function InventoryProductDetailScreen({
 	}, [canNavigate, optionsDraftId, patchOptionsDraft, product, productId, router, toScopedRoute]);
 
 	const onArchiveItem = useCallback(() => {
-		if (!productId) return;
-		safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}/archive`));
-	}, [productId, router, safePush, toScopedRoute]);
+		if (!productId || !product || product.isActive === false || busy.isBusy) return;
+		setIsArchiveConfirmOpen(true);
+	}, [busy.isBusy, product, productId]);
 
 	const onRestoreItem = useCallback(() => {
-		if (!productId) return;
-		safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}/restore`));
-	}, [productId, router, safePush, toScopedRoute]);
+		if (!productId || !product || product.isActive !== false || busy.isBusy) return;
+		setIsRestoreConfirmOpen(true);
+	}, [busy.isBusy, product, productId]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		if (busy.isBusy) return;
+		setIsArchiveConfirmOpen(false);
+	}, [busy.isBusy]);
+
+	const closeRestoreConfirm = useCallback(() => {
+		if (busy.isBusy) return;
+		setIsRestoreConfirmOpen(false);
+	}, [busy.isBusy]);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!product || product.isActive === false || busy.isBusy) return;
+		await withBusy("Archiving item...", async () => {
+			try {
+				await inventoryApi.archiveProduct(product.id);
+				invalidateInventoryAfterMutation(queryClient, { productId });
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+					queryClient.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
+				]);
+				setIsArchiveConfirmOpen(false);
+				showSuccess("Item archived.");
+			} catch (error) {
+				showError(extractApiErrorMessage(error));
+			}
+		});
+	}, [busy.isBusy, product, productId, queryClient, showError, showSuccess, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
+		if (!product || product.isActive !== false || busy.isBusy) return;
+		await withBusy("Restoring item...", async () => {
+			try {
+				await inventoryApi.restoreProduct(product.id);
+				invalidateInventoryAfterMutation(queryClient, { productId });
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+					queryClient.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
+				]);
+				setIsRestoreConfirmOpen(false);
+				showSuccess("Item restored.");
+			} catch (error) {
+				showError(extractApiErrorMessage(error));
+			}
+		});
+	}, [busy.isBusy, product, productId, queryClient, showError, showSuccess, withBusy]);
 
 	const onCancel = onBackToInventory;
 
@@ -1326,6 +1381,24 @@ export default function InventoryProductDetailScreen({
 						)}
 					</ScrollView>
 				</BAISurface>
+				<BAIConfirmArchiveModal
+					visible={isArchiveConfirmOpen}
+					entityLabel='item'
+					entityName={product?.name}
+					description='Archived items stay in historical records and are removed from active inventory lists.'
+					onDismiss={closeArchiveConfirm}
+					onConfirm={onConfirmArchive}
+					disabled={busy.isBusy}
+				/>
+				<BAIConfirmRestoreModal
+					visible={isRestoreConfirmOpen}
+					entityLabel='item'
+					entityName={product?.name}
+					description='Restored items return to active inventory lists.'
+					onDismiss={closeRestoreConfirm}
+					onConfirm={onConfirmRestore}
+					disabled={busy.isBusy}
+				/>
 			</BAIScreen>
 		</>
 	);

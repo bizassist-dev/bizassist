@@ -20,8 +20,8 @@ export async function activateKeepAwakeSafe(tag = "bizassist-dev"): Promise<void
 
 	try {
 		await KeepAwake.activateKeepAwakeAsync(tag);
-	} catch (e) {
-		console.warn("[keepAwake] activate failed (ignored):", e);
+	} catch {
+		// ignore
 	}
 }
 

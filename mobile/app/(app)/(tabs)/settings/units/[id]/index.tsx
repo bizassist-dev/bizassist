@@ -4,9 +4,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "react-native-paper";
 import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
@@ -14,12 +15,14 @@ import { BAIText } from "@/components/ui/BAIText";
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { unitsApi } from "@/modules/units/units.api";
+import { syncUnitListCaches } from "@/modules/units/units.cache";
 import { precisionHint } from "@/modules/units/units.format";
 import { SETTINGS_UNITS_ROUTE } from "@/modules/units/units.navigation";
 import { unitKeys } from "@/modules/units/units.queries";
 import type { Unit } from "@/modules/units/units.types";
 import { displayUnitAbbreviation, displayUnitName } from "@/modules/units/units.display";
 import { useAppHeader } from "@/modules/navigation/useAppHeader";
+import { useAppToast } from "@/providers/AppToastProvider";
 
 // Governance: "Each" is system-owned and cannot be edited or archived.
 const PROTECTED_CATALOG_ID = "ea" as const;
@@ -43,15 +46,19 @@ function precisionLabel(scale: number): string {
 
 export default function UnitDetailScreen() {
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const theme = useTheme();
 	const { contentMaxWidth, isTablet } = useResponsiveLayout();
-	const { busy } = useAppBusy();
+	const { busy, withBusy } = useAppBusy();
+	const { showError, showSuccess } = useAppToast();
 
 	const params = useLocalSearchParams<{ id?: string }>();
 	const unitId = String(params.id ?? "");
 
 	const navLockRef = useRef(false);
 	const [isNavLocked, setIsNavLocked] = useState(false);
+	const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
+	const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
 	const lockNav = useCallback((ms = 650) => {
 		if (navLockRef.current) return false;
 		navLockRef.current = true;
@@ -116,15 +123,53 @@ export default function UnitDetailScreen() {
 
 	const onArchivePress = useCallback(() => {
 		if (!unit || !canArchive || isUiDisabled) return;
-		if (!lockNav()) return;
-		router.push(`/(app)/(tabs)/settings/units/${encodeURIComponent(unit.id)}/archive` as any);
-	}, [canArchive, isUiDisabled, lockNav, router, unit]);
+		setIsArchiveConfirmOpen(true);
+	}, [canArchive, isUiDisabled, unit]);
 
 	const onRestorePress = useCallback(() => {
 		if (!unit || !canRestore || isUiDisabled) return;
-		if (!lockNav()) return;
-		router.push(`/(app)/(tabs)/settings/units/${encodeURIComponent(unit.id)}/restore` as any);
-	}, [canRestore, isUiDisabled, lockNav, router, unit]);
+		setIsRestoreConfirmOpen(true);
+	}, [canRestore, isUiDisabled, unit]);
+
+	const closeArchiveConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsArchiveConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const closeRestoreConfirm = useCallback(() => {
+		if (isUiDisabled) return;
+		setIsRestoreConfirmOpen(false);
+	}, [isUiDisabled]);
+
+	const onConfirmArchive = useCallback(async () => {
+		if (!unit || !canArchive || isUiDisabled) return;
+		await withBusy("Archiving unit...", async () => {
+			try {
+				const nextUnit = await unitsApi.archiveUnit(unit.id);
+				syncUnitListCaches(queryClient, nextUnit);
+				void queryClient.invalidateQueries({ queryKey: unitKeys.root });
+				setIsArchiveConfirmOpen(false);
+				showSuccess("Unit archived.");
+			} catch (error: any) {
+				showError(error?.message ?? "Failed to archive unit.");
+			}
+		});
+	}, [canArchive, isUiDisabled, queryClient, showError, showSuccess, unit, withBusy]);
+
+	const onConfirmRestore = useCallback(async () => {
+		if (!unit || !canRestore || isUiDisabled) return;
+		await withBusy("Restoring unit...", async () => {
+			try {
+				const nextUnit = await unitsApi.restoreUnit(unit.id);
+				syncUnitListCaches(queryClient, nextUnit);
+				void queryClient.invalidateQueries({ queryKey: unitKeys.root });
+				setIsRestoreConfirmOpen(false);
+				showSuccess("Unit restored.");
+			} catch (error: any) {
+				showError(error?.message ?? "Failed to restore unit.");
+			}
+		});
+	}, [canRestore, isUiDisabled, queryClient, showError, showSuccess, unit, withBusy]);
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const detailDividerStyle = useMemo(() => [styles.detailDivider, { backgroundColor: borderColor }], [borderColor]);
@@ -330,6 +375,24 @@ export default function UnitDetailScreen() {
 				contentContainerStyle={[styles.contentContainer, isTablet && styles.contentContainerTablet]}
 			>
 				<View style={[styles.column, isTablet && { maxWidth: contentMaxWidth }]}>{content}</View>
+				<BAIConfirmArchiveModal
+					visible={isArchiveConfirmOpen}
+					entityLabel='unit'
+					entityName={unit?.name}
+					description='Archived units remain in history but cannot be selected for new items.'
+					onDismiss={closeArchiveConfirm}
+					onConfirm={onConfirmArchive}
+					disabled={isUiDisabled}
+				/>
+				<BAIConfirmRestoreModal
+					visible={isRestoreConfirmOpen}
+					entityLabel='unit'
+					entityName={unit?.name}
+					description='Restored units can be selected for new items again.'
+					onDismiss={closeRestoreConfirm}
+					onConfirm={onConfirmRestore}
+					disabled={isUiDisabled}
+				/>
 			</BAIScreen>
 		</>
 	);

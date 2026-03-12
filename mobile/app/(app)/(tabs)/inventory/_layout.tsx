@@ -75,9 +75,7 @@ export default function InventoryStackLayout() {
 			<Stack.Screen name='categories/[id]/index' options={{ headerShown: false }} />
 			<Stack.Screen name='categories/[id]/items/[itemId]/index' options={{ headerShown: false }} />
 			<Stack.Screen name='categories/[id]/edit' options={{ title: "Edit Category" }} />
-			<Stack.Screen name='categories/[id]/archive' options={{ title: "Archive Category" }} />
-			<Stack.Screen name='categories/[id]/restore' options={{ title: "Restore Category" }} />
-			<Stack.Screen name='categories/picker' options={{ title: "Select Categories" }} />
+				<Stack.Screen name='categories/picker' options={{ title: "Select Categories" }} />
 			<Stack.Screen name='discounts/discount.ledger' options={{ headerShown: false }} />
 			<Stack.Screen name='discounts/create' options={{ headerShown: false }} />
 			<Stack.Screen name='discounts/[id]/index' options={{ headerShown: false }} />
@@ -88,16 +86,12 @@ export default function InventoryStackLayout() {
 			<Stack.Screen name='modifiers/apply-set' options={{ headerShown: false }} />
 			<Stack.Screen name='modifiers/[id]/index' options={{ title: "Modifier Details" }} />
 			<Stack.Screen name='modifiers/[id]/edit' options={{ headerShown: false }} />
-			<Stack.Screen name='modifiers/[id]/archive' options={{ title: "Archive Modifier Set" }} />
-			<Stack.Screen name='modifiers/[id]/restore' options={{ title: "Restore Modifier Set" }} />
 			<Stack.Screen name='units/add' options={{ title: "Unit Category", headerBackTitle: "Unit Type" }} />
 			<Stack.Screen name='units/select' options={{ title: "Add Unit", headerBackTitle: "Add Unit" }} />
 			<Stack.Screen
 				name='units/custom-create'
 				options={{ title: "Create Custom Unit", headerBackTitle: "Custom Unit" }}
 			/>
-			<Stack.Screen name='units/[id]/archive' options={{ title: "Archive Unit" }} />
-			<Stack.Screen name='units/[id]/restore' options={{ title: "Restore Unit" }} />
 			<Stack.Screen name='products/pos-tile' options={{ headerShown: false, animation: "none" }} />
 			<Stack.Screen name='products/pos-tile-photo-library' options={{ headerShown: false, animation: "none" }} />
 			<Stack.Screen name='products/pos-tile-recents' options={{ headerShown: false, animation: "none" }} />
@@ -112,7 +106,6 @@ export default function InventoryStackLayout() {
 				}}
 			/>
 			<Stack.Screen name='products/[id]/edit' options={{ title: "Edit Item" }} />
-			<Stack.Screen name='products/[id]/archive' options={{ title: "Archive Item" }} />
 
 			<Stack.Screen
 				name='products/[id]/activity/index'

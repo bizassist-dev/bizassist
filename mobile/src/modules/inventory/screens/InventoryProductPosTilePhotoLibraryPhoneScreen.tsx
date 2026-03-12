@@ -4,8 +4,9 @@
 // Photo Library picker for POS Tile (Create Item flow)
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { AppState, FlatList, Pressable, StyleSheet, View, type ImageSourcePropType } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
 import * as MediaLibrary from "expo-media-library";
@@ -19,8 +20,8 @@ import { BAIText } from "@/components/ui/BAIText";
 import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIInlineHeaderScaffold } from "@/components/ui/BAIInlineHeaderScaffold";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
-import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAIPressableRow } from "@/components/ui/BAIPressableRow";
+import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { InventoryPermissionModal } from "@/modules/inventory/components/InventoryPermissionModal";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
@@ -34,9 +35,9 @@ import {
 import {
 	DRAFT_ID_KEY,
 	POS_TILE_CROP_ROUTE,
+	POS_TILE_PHOTO_LIBRARY_ROUTE,
 	POS_TILE_RECENTS_ROUTE,
 	POS_TILE_ROUTE,
-	POS_TILE_PHOTO_LIBRARY_ROUTE,
 	RETURN_TO_KEY,
 	ROOT_RETURN_TO_KEY,
 	LOCAL_URI_KEY,
@@ -46,15 +47,71 @@ import {
 } from "@/modules/inventory/posTile.contract";
 
 type MediaAsset = MediaLibrary.Asset;
+type GalleryItem =
+	| {
+			kind: "asset";
+			id: string;
+			asset: MediaAsset;
+			source: { uri: string };
+	  }
+	| {
+			kind: "mock";
+			id: string;
+			source: ImageSourcePropType;
+	  };
 
 const LIBRARY_PAGE_SIZE = 100; // masterplan: OS Photo Library uses windowed pagination with 100 thumbnails per page.
+const DEV_MOCK_PHOTO_REPEAT_COUNT = 18;
+const TAB_DOCK_HEIGHT = 64;
+const TAB_DOCK_BOTTOM_SAFE_REDUCTION = 8;
+const FLOATING_RECENTS_GAP = 10;
+const FLOATING_RECENTS_SPACER = 96;
+const DEV_MOCK_PHOTO_SOURCES: ImageSourcePropType[] = [
+	require("../../../../assets/images/logo1.jpg"),
+	require("../../../../assets/images/logo1 copy.jpg"),
+	require("../../../../assets/images/logo1.png"),
+	require("../../../../assets/images/BizAssist-logo.png"),
+	require("../../../../assets/images/BizAssist-logo1.png"),
+	require("../../../../assets/images/BizAssist-logo2.png"),
+];
 
 function safeString(v: unknown): string {
 	return typeof v === "string" ? v : String(v ?? "");
 }
 
+function clampAlpha(value: number): number {
+	if (!Number.isFinite(value)) return 1;
+	return Math.max(0, Math.min(1, value));
+}
+
+function hexToRgb(hex: string) {
+	const cleaned = hex.replace("#", "").trim();
+	if (cleaned.length === 3) {
+		return {
+			r: parseInt(cleaned[0] + cleaned[0], 16),
+			g: parseInt(cleaned[1] + cleaned[1], 16),
+			b: parseInt(cleaned[2] + cleaned[2], 16),
+		};
+	}
+	if (cleaned.length === 6) {
+		return {
+			r: parseInt(cleaned.slice(0, 2), 16),
+			g: parseInt(cleaned.slice(2, 4), 16),
+			b: parseInt(cleaned.slice(4, 6), 16),
+		};
+	}
+	return null;
+}
+
+function applyAlpha(color: string, alpha: number): string {
+	const rgb = hexToRgb(color);
+	if (!rgb) return color;
+	return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clampAlpha(alpha)})`;
+}
+
 export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: { routeScope?: InventoryRouteScope }) {
 	const router = useRouter();
+	const insets = useSafeAreaInsets();
 	const theme = useTheme();
 	const { withBusy } = useAppBusy();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
@@ -160,6 +217,25 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 
 	const [selectedId, setSelectedId] = useState<string>("");
 	const selectedAsset = useMemo(() => assets.find((a) => a.id === selectedId) ?? null, [assets, selectedId]);
+	const mockGalleryItems = useMemo<GalleryItem[]>(() => {
+		if (!__DEV__) return [];
+
+		return Array.from({ length: DEV_MOCK_PHOTO_REPEAT_COUNT }, (_, index) => ({
+			kind: "mock" as const,
+			id: `mock-photo-${index + 1}`,
+			source: DEV_MOCK_PHOTO_SOURCES[index % DEV_MOCK_PHOTO_SOURCES.length],
+		}));
+	}, []);
+	const galleryItems = useMemo<GalleryItem[]>(() => {
+		const assetItems: GalleryItem[] = assets.map((asset) => ({
+			kind: "asset",
+			id: asset.id,
+			asset,
+			source: { uri: asset.uri },
+		}));
+
+		return __DEV__ ? [...assetItems, ...mockGalleryItems] : assetItems;
+	}, [assets, mockGalleryItems]);
 
 	// If selection disappears due to refresh, clear it.
 	useEffect(() => {
@@ -422,6 +498,7 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 	const onOpenRecents = useCallback(() => {
 		if (isUiDisabled) return;
 		if (!lockNav()) return;
+
 		router.push({
 			pathname: scopedRecentsRoute as any,
 			params: isItemPhotoMode
@@ -437,11 +514,11 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 						[RETURN_TO_KEY]: scopedPhotoLibraryRoute,
 						[TILE_LABEL_KEY]: tileLabelParam,
 					},
-		});
+		} as any);
 	}, [
 		draftId,
-		isUiDisabled,
 		isItemPhotoMode,
+		isUiDisabled,
 		lockNav,
 		productId,
 		returnTo,
@@ -453,6 +530,14 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 	]);
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const floatingRecentsBottom =
+		Math.max(insets.bottom - TAB_DOCK_BOTTOM_SAFE_REDUCTION, 2) + TAB_DOCK_HEIGHT + FLOATING_RECENTS_GAP;
+	const floatingRecentsFill = applyAlpha(theme.colors.surface, theme.dark ? 0.74 : 0.84);
+	const floatingRecentsBorder = applyAlpha(borderColor, theme.dark ? 0.78 : 0.56);
+	const gridContentStyle = useMemo(
+		() => [styles.grid, { paddingBottom: floatingRecentsBottom + FLOATING_RECENTS_SPACER }],
+		[floatingRecentsBottom],
+	);
 
 	useEffect(() => {
 		if (!hasPermission) return;
@@ -486,11 +571,13 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 			<BAIScreen
 				padded={false}
 				safeTop={false}
+				safeBottom={false}
+				safeAreaGradientBottom
 				tabbed
 				style={[styles.root, { backgroundColor: theme.colors.background }]}
 			>
 				<View style={[styles.screen, { backgroundColor: theme.colors.background }]}>
-					<BAISurface style={[styles.card, { borderColor }]} padded>
+					<BAISurface style={[styles.actionCard, { borderColor }]} padded={false} variant='interactive'>
 						<View style={styles.topActions}>
 							<BAIButton
 								intent='neutral'
@@ -525,13 +612,13 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 								shape='pill'
 								size='sm'
 								widthPreset='standard'
-								iconLeft='camera'
-								onPress={onTakePhoto}
+								iconLeft='image'
+								onPress={onPickFromGallery}
 								disabled={isUiDisabled}
 								style={{ flex: 1 }}
-								contentStyle={{ gap: 2 }}
+								contentStyle={{ gap: 0 }}
 							>
-								Take a Photo
+								Device Library
 							</BAIButton>
 							<BAIButton
 								intent='primary'
@@ -539,97 +626,124 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 								shape='pill'
 								size='sm'
 								widthPreset='standard'
-								iconLeft='image'
-								onPress={onPickFromGallery}
+								iconLeft='camera'
+								onPress={onTakePhoto}
 								disabled={isUiDisabled}
 								style={{ flex: 1 }}
-								contentStyle={{ gap: 2 }}
+								contentStyle={{ gap: 0 }}
 							>
-								Device Library
+								Camera
 							</BAIButton>
 						</View>
-
-						{!hasPermission ? (
-							<View style={styles.center}>
-								<BAIText variant='title'>Allow Photo Access</BAIText>
-								<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
-									Allow Access to Choose a POS Tile Photo From Your Library.
-								</BAIText>
-								<BAIButton intent='primary' variant='solid' onPress={onRequestPermission} style={{ marginTop: 12 }}>
-									Grant Access
-								</BAIButton>
-								<BAIButton
-									intent='primary'
-									variant='solid'
-									onPress={onPickFromGallery}
-									style={{ marginTop: 10 }}
-									disabled={isUiDisabled}
-								>
-									Choose Library
-								</BAIButton>
-							</View>
-						) : assetsQuery.isLoading ? (
-							<View style={styles.center}>
-								<BAIActivityIndicator />
-							</View>
-						) : assetsQuery.isError ? (
-							<View style={styles.center}>
-								<BAIText variant='title'>Unable to Load Photos</BAIText>
-								<BAIRetryButton onPress={() => assetsQuery.refetch()} style={{ marginTop: 12 }} />
-							</View>
-						) : assets.length === 0 ? (
-							<View style={styles.center}>
-								<BAIText variant='title'>No Photos Found</BAIText>
-								<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
-									Add Photos to Your Device and Try Again.
-								</BAIText>
-							</View>
-						) : (
-							<>
-								<FlatList
-									data={assets}
-									keyExtractor={(item) => item.id}
-									numColumns={3}
-									style={styles.gridList}
-									contentContainerStyle={styles.grid}
-									columnWrapperStyle={styles.gridRow}
-									showsVerticalScrollIndicator={false}
-									onEndReachedThreshold={0.6}
-									onEndReached={loadMore}
-									ListFooterComponent={
-										isLoadingMore ? (
-											<View style={{ paddingVertical: 10 }}>
-												<BAIActivityIndicator />
-											</View>
-										) : null
-									}
-									renderItem={({ item }) => {
-										const selected = item.id === selectedId;
-										return (
-											<Pressable
-												onPress={() => setSelectedId(item.id)}
-												style={[styles.tile, { borderColor: selected ? theme.colors.primary : borderColor }]}
-											>
-												<Image source={{ uri: item.uri }} style={styles.tileImage} contentFit='cover' />
-												{selected ? (
-													<View style={styles.selectedBadge}>
-														<MaterialCommunityIcons name='check' size={16} color='#FFFFFF' />
-													</View>
-												) : null}
-											</Pressable>
-										);
-									}}
-								/>
-
-								<View style={{ height: 14 }} />
-								<BAIText variant='subtitle'>Libraries</BAIText>
-								<View style={{ height: 8 }} />
-								<BAIPressableRow label='Recent' value='Photos' onPress={onOpenRecents} disabled={isUiDisabled} />
-							</>
-						)}
 					</BAISurface>
+
+					{!hasPermission ? (
+						<View style={styles.center}>
+							<BAIText variant='title'>Allow Photo Access</BAIText>
+							<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
+								Allow Access to Choose a POS Tile Photo From Your Library.
+							</BAIText>
+							<BAIButton intent='primary' variant='solid' onPress={onRequestPermission} style={{ marginTop: 12 }}>
+								Grant Access
+							</BAIButton>
+							<BAIButton
+								intent='primary'
+								variant='solid'
+								onPress={onPickFromGallery}
+								style={{ marginTop: 10 }}
+								disabled={isUiDisabled}
+							>
+								Choose Library
+							</BAIButton>
+						</View>
+					) : assetsQuery.isLoading ? (
+						<View style={styles.center}>
+							<BAIActivityIndicator />
+						</View>
+					) : assetsQuery.isError ? (
+						<View style={styles.center}>
+							<BAIText variant='title'>Unable to Load Photos</BAIText>
+							<BAIRetryButton onPress={() => assetsQuery.refetch()} style={{ marginTop: 12 }} />
+						</View>
+					) : galleryItems.length === 0 ? (
+						<View style={styles.center}>
+							<BAIText variant='title'>No Photos Found</BAIText>
+							<BAIText variant='body' muted style={{ marginTop: 6, textAlign: "center" }}>
+								Add Photos to Your Device and Try Again.
+							</BAIText>
+						</View>
+					) : (
+						<>
+							<FlatList
+								data={galleryItems}
+								keyExtractor={(item) => item.id}
+								numColumns={3}
+								style={styles.gridList}
+								contentContainerStyle={gridContentStyle}
+								columnWrapperStyle={styles.gridRow}
+								showsVerticalScrollIndicator={false}
+								onEndReachedThreshold={0.6}
+								onEndReached={loadMore}
+								ListFooterComponent={
+									isLoadingMore ? (
+										<View style={{ paddingVertical: 10 }}>
+											<BAIActivityIndicator />
+										</View>
+									) : null
+								}
+								renderItem={({ item }) => {
+									const selected = item.kind === "asset" && item.id === selectedId;
+									const isMock = item.kind === "mock";
+									return (
+										<Pressable
+											onPress={isMock ? undefined : () => setSelectedId(item.id)}
+											disabled={isMock}
+											style={[
+												styles.tile,
+												{ borderColor: selected ? theme.colors.primary : borderColor },
+												isMock ? styles.mockTile : null,
+											]}
+										>
+											<Image source={item.source} style={styles.tileImage} contentFit='cover' />
+											{isMock ? (
+												<View style={styles.mockBadge}>
+													<BAIText variant='caption' style={styles.mockBadgeText}>
+														Mock
+													</BAIText>
+												</View>
+											) : null}
+											{selected ? (
+												<View style={styles.selectedBadge}>
+													<MaterialCommunityIcons name='check' size={16} color='#FFFFFF' />
+												</View>
+											) : null}
+										</Pressable>
+									);
+								}}
+							/>
+						</>
+					)}
 				</View>
 			</BAIScreen>
+
+			{hasPermission ? (
+				<View pointerEvents='box-none' style={styles.floatingRecentsLayer}>
+					<BAIPressableRow
+						label='Recent'
+						value='Photos'
+						onPress={onOpenRecents}
+						disabled={isUiDisabled}
+						style={[
+							styles.floatingRecentsRow,
+							{
+								bottom: floatingRecentsBottom,
+								backgroundColor: floatingRecentsFill,
+								borderColor: floatingRecentsBorder,
+							},
+						]}
+					/>
+				</View>
+			) : null}
 
 			<InventoryPermissionModal
 				visible={selectModalOpen}
@@ -645,27 +759,44 @@ export default function PosTilePhotoLibraryPhone({ routeScope = "inventory" }: {
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12 },
-	card: { borderWidth: 1, borderRadius: 24, flex: 1 },
+	screen: { flex: 1, paddingHorizontal: 12, gap: 10 },
+	actionCard: {
+		borderWidth: 1,
+		borderRadius: 24,
+		padding: 12,
+		gap: 10,
+		marginBottom: 0,
+	},
 	topActions: {
 		flexDirection: "row",
-		justifyContent: "flex-end",
 		gap: 10,
-		marginBottom: 12,
 	},
 	secondaryActions: {
 		flexDirection: "row",
-		justifyContent: "flex-end",
 		gap: 10,
-		marginBottom: 12,
 	},
 	center: { alignItems: "center", justifyContent: "center", paddingVertical: 24 },
 	gridList: {
 		flex: 1,
 		minHeight: 0,
 	},
-	grid: { paddingTop: 6, paddingBottom: 4 },
-	gridRow: { gap: 10, marginBottom: 10 },
+	grid: { paddingTop: 6, paddingBottom: 4, alignItems: "center" },
+	gridRow: { gap: 10, marginBottom: 10, justifyContent: "center" },
+	floatingRecentsLayer: {
+		...StyleSheet.absoluteFillObject,
+		pointerEvents: "box-none",
+	},
+	floatingRecentsRow: {
+		position: "absolute",
+		left: 12,
+		right: 12,
+		zIndex: 25,
+		elevation: 10,
+		shadowColor: "#000",
+		shadowOpacity: 0.16,
+		shadowRadius: 16,
+		shadowOffset: { width: 0, height: 8 },
+	},
 	tile: {
 		width: "31%",
 		aspectRatio: 1,
@@ -673,7 +804,23 @@ const styles = StyleSheet.create({
 		borderRadius: 14,
 		overflow: "hidden",
 	},
+	mockTile: {
+		opacity: 0.8,
+	},
 	tileImage: { width: "100%", height: "100%" },
+	mockBadge: {
+		position: "absolute",
+		left: 6,
+		top: 6,
+		paddingHorizontal: 6,
+		paddingVertical: 3,
+		borderRadius: 999,
+		backgroundColor: "rgba(17,24,39,0.78)",
+	},
+	mockBadgeText: {
+		color: "#FFFFFF",
+		fontWeight: "700",
+	},
 	selectedBadge: {
 		position: "absolute",
 		right: 6,
