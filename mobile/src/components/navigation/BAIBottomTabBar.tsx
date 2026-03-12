@@ -561,6 +561,8 @@ const styles = StyleSheet.create({
 	wrapper: {
 		position: "absolute",
 		alignItems: "center",
+		zIndex: 30,
+		elevation: 30,
 	},
 
 	cluster: {
@@ -581,9 +583,9 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 
 		shadowColor: "#000",
-		shadowOpacity: 0.1,
-		shadowRadius: 14,
-		shadowOffset: { width: 0, height: 6 },
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
+		shadowOffset: { width: 0, height: 4 },
 		elevation: 3,
 	},
 
@@ -632,10 +634,10 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 
 		shadowColor: "#000",
-		shadowOpacity: 0.12,
-		shadowRadius: 14,
-		shadowOffset: { width: 0, height: 6 },
-		elevation: 5,
+		shadowOpacity: 0.1,
+		shadowRadius: 10,
+		shadowOffset: { width: 0, height: 4 },
+		elevation: 3,
 	},
 
 	label: {
