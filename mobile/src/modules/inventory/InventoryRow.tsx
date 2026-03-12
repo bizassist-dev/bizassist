@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
 	},
 	rowPressable: {
 		paddingHorizontal: 12,
-		paddingVertical: 8,
+		paddingVertical: 12,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",

@@ -310,7 +310,13 @@ export function DiscountsLedgerScreen({
 
 	return (
 		<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} style={styles.root}>
-			<BAIHeader title='Manage Discounts' variant='back' onLeftPress={onBack} disabled={isUiDisabled} />
+			<BAIHeader
+				title='Manage Discounts'
+				variant='back'
+				onLeftPress={onBack}
+				disabled={isUiDisabled}
+				showAvatarPlaceholder
+			/>
 			<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
 				<SettingsScreenLayout
 					screenStyle={{ paddingTop: 0, paddingBottom: screenBottomPad }}

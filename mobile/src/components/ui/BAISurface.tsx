@@ -21,7 +21,7 @@ export function BAISurface({
 	children,
 	style,
 	padded = true,
-	radius = 18,
+	radius = 20,
 	bordered = true,
 	borderWidth,
 	borderColor,
@@ -30,16 +30,13 @@ export function BAISurface({
 }: BAISurfaceProps) {
 	const theme = useTheme();
 
-	// Governance:
-	// - Use outline (not outlineVariant) for consistent visibility.
-	// - Default border width is 1 (no hairline).
-	const resolvedBorderColor = borderColor ?? theme.colors.outline;
-	const resolvedBorderWidth = borderWidth ?? 1;
+	const resolvedBorderColor = borderColor ?? (theme.colors.outlineVariant ?? theme.colors.outline);
+	const resolvedBorderWidth = borderWidth ?? StyleSheet.hairlineWidth;
 
 	const containerStyle = useMemo<ViewStyle>(() => {
 		const elevationColors = (theme as any)?.colors?.elevation as { level1?: string; level2?: string } | undefined;
 
-		const interactiveBg = elevationColors?.level1 ?? elevationColors?.level2 ?? theme.colors.surface;
+		const interactiveBg = theme.colors.surfaceVariant ?? elevationColors?.level1 ?? elevationColors?.level2 ?? theme.colors.surface;
 
 		const base: ViewStyle = {
 			backgroundColor: variant === "interactive" ? interactiveBg : theme.colors.surface,
@@ -53,9 +50,9 @@ export function BAISurface({
 
 		if (elevation > 0) {
 			base.shadowColor = "#000";
-			base.shadowOffset = { width: 0, height: elevation };
-			base.shadowOpacity = theme.dark ? 0.3 : 0.12;
-			base.shadowRadius = elevation * 3;
+			base.shadowOffset = { width: 0, height: Math.max(2, elevation) };
+			base.shadowOpacity = theme.dark ? 0.16 : 0.06;
+			base.shadowRadius = elevation * 2.5;
 
 			if (Platform.OS === "android") {
 				base.elevation = elevation;
@@ -73,6 +70,6 @@ const styles = StyleSheet.create({
 		marginBottom: 12,
 	},
 	padded: {
-		padding: 14,
+		padding: 16,
 	},
 });

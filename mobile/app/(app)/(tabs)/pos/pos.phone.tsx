@@ -34,6 +34,7 @@ import { BAIText } from "@/components/ui/BAIText";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { useAuth } from "@/modules/auth/AuthContext";
+import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
 import type { CatalogProduct } from "@/modules/catalog/catalog.types";
@@ -91,7 +92,6 @@ type CatalogGroupTab = "ITEMS" | "SERVICES";
 export const POS_LAYOUT_LOCK = "LOCKED_V1" as const;
 const POS_GUTTER = 12;
 const POS_HEADER_CARD_PAD_TOP = 8;
-const POS_HEADER_CARD_PAD_BOTTOM = 8;
 const POS_HEADER_PAD_Y = 6;
 const POS_CARD_RADIUS = 16;
 const POS_CART_RADIUS = 18;
@@ -342,7 +342,9 @@ export default function PosPhone() {
 	const params = useLocalSearchParams<{ scannedBarcode?: string }>();
 	const theme = useTheme();
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const surfaceAlt = theme.colors.surfaceVariant ?? theme.colors.surface;
 	const { user } = useAuth();
+	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 	const authUserId = typeof user?.id === "string" ? user.id.trim() : "";
 
 	const { currencyCode, businessName, countryCode, businessId } = useActiveBusinessMeta();
@@ -452,15 +454,6 @@ export default function PosPhone() {
 		},
 	);
 	const isCatalogBlockingLoad = productsQuery.isLoading && items.length === 0;
-	const posTabs = useMemo(
-		() =>
-			[
-				{ label: "Catalog", value: "CATALOG", count: items.length },
-				{ label: "Cart", value: "CART", count: itemCount },
-			] as const,
-		[itemCount, items.length],
-	);
-
 	const subtotalMinor = useMemo(() => {
 		return cartLines.reduce((sum, l) => {
 			const baseMinor = decimalToMinorUnits(l.unitPrice ?? "0.00");
@@ -841,6 +834,11 @@ export default function PosPhone() {
 										<BAIButton shape='pill' onPress={() => setCart({})} disabled={disabled || cartLines.length === 0}>
 											Clear
 										</BAIButton>
+										<View style={[styles.avatarPlaceholder, { borderColor, backgroundColor: surfaceAlt }]}>
+											<BAIText variant='subtitle' style={styles.avatarPlaceholderText}>
+												{userAvatarInitials}
+											</BAIText>
+										</View>
 									</View>
 								</View>
 
@@ -1056,7 +1054,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "space-between",
 	},
-	headerLeft: { flex: 1 },
+	headerLeft: { flex: 1, minWidth: 0 },
 	headerTitleRow: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -1067,8 +1065,25 @@ const styles = StyleSheet.create({
 		paddingVertical: 4,
 		borderRadius: 999,
 	},
-	headerRight: { flexDirection: "row", gap: 10 },
-
+	headerRight: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		marginLeft: 12,
+	},
+	avatarPlaceholder: {
+		width: 50,
+		height: 50,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+		flexShrink: 0,
+	},
+	avatarPlaceholderText: {
+		fontWeight: "700",
+		letterSpacing: 0.2,
+	},
 	scrollArea: { flex: 1, minHeight: 0 },
 	tabsWrap: { paddingHorizontal: 0 },
 	searchWrap: { marginTop: 6 },

@@ -42,13 +42,14 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAIGovernedScrollableLayout } from "@/components/ui/BAIGovernedScrollableLayout";
-import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
 import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIEmptyStateButton } from "@/components/ui/BAIEmptyStateButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIGroupTabs, type BAIGroupTab } from "@/components/ui/BAIGroupTabs";
 
+import { useAuth } from "@/modules/auth/AuthContext";
+import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { InventorySearchBar } from "@/modules/inventory/components/InventorySearchBar";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
@@ -323,8 +324,10 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	const theme = useTheme();
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const surfaceAlt = theme.colors.surfaceVariant ?? theme.colors.surface;
+	const { user } = useAuth();
 	const { countryCode } = useActiveBusinessMeta();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
+	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 
 	const params = useLocalSearchParams<{ q?: string; filter?: string; type?: string }>();
 	const paramQ = useMemo(() => String(params.q ?? "").trim(), [params.q]);
@@ -589,13 +592,17 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 								<View style={styles.heroRight}>
 									<BAIButton
 										widthPreset='standard'
-										mode='contained'
+										shape='pill'
 										onPress={onPressCreate}
 										disabled={!canNavigate}
-										style={styles.addButton}
 									>
 										Create
 									</BAIButton>
+									<View style={[styles.avatarPlaceholder, { borderColor, backgroundColor: surfaceAlt }]}>
+										<BAIText variant='subtitle' style={styles.avatarPlaceholderText}>
+											{userAvatarInitials}
+										</BAIText>
+									</View>
 								</View>
 							</View>
 
@@ -726,7 +733,7 @@ const styles = StyleSheet.create({
 
 	heroRow: {
 		flexDirection: "row",
-		alignItems: "flex-start",
+		alignItems: "center",
 		justifyContent: "space-between",
 		paddingBottom: 2,
 		gap: 8,
@@ -737,8 +744,23 @@ const styles = StyleSheet.create({
 		gap: 2,
 	},
 	heroRight: {
-		alignItems: "flex-end",
-		gap: 0,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+		marginLeft: 12,
+	},
+	avatarPlaceholder: {
+		width: 50,
+		height: 50,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+		flexShrink: 0,
+	},
+	avatarPlaceholderText: {
+		fontWeight: "700",
+		letterSpacing: 0.2,
 	},
 	titleRow: {
 		flexDirection: "row",
@@ -746,10 +768,6 @@ const styles = StyleSheet.create({
 		gap: 6,
 		flexWrap: "wrap",
 	},
-	addButton: {
-		minWidth: 150,
-	},
-
 	syncBadge: {
 		borderWidth: StyleSheet.hairlineWidth,
 		borderRadius: 999,
@@ -783,7 +801,7 @@ const styles = StyleSheet.create({
 	},
 
 	list: { flex: 1, minHeight: 0 },
-	listContent: { paddingTop: 4, paddingBottom: 200 },
+	listContent: { paddingTop: 0, paddingBottom: 200 },
 	listContentEmpty: { flexGrow: 1 },
 	itemGap: { height: 10 },
 	centerState: {

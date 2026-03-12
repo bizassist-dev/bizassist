@@ -16,21 +16,21 @@ const baseLight: MD3Theme = {
 	colors: {
 		...DefaultLightTheme.colors,
 
-		primary: baiSemanticColors.primary.main,
-		primaryContainer: baiSemanticColors.primary.soft,
+		primary: "#007AFF",
+		primaryContainer: "#5AC8FA",
 
-		secondary: baiSemanticColors.secondary.main,
-		secondaryContainer: baiSemanticColors.secondary.soft,
+		secondary: "#5856D6",
+		secondaryContainer: "#7875FF",
 
 		background: baiSemanticColors.surfaces.background,
 		surface: baiSemanticColors.surfaces.surface,
 		surfaceVariant: baiSemanticColors.surfaces.surfaceSubtle,
 
-		// Borders — SaaS neutral
+		// Borders — Apple-style light separators
 		outline: baiSemanticColors.surfaces.borderSubtle,
-		outlineVariant: baiColors.neutral[300],
+		outlineVariant: baiSemanticColors.surfaces.borderStrong,
 
-		error: baiSemanticColors.error.main,
+		error: "#FF3B30",
 		errorContainer: baiSemanticColors.error.soft,
 
 		onPrimary: baiSemanticColors.text.onPrimary,
@@ -43,7 +43,7 @@ const baseLight: MD3Theme = {
 		surfaceDisabled: baiButtonDisabled.light.background,
 		onSurfaceDisabled: baiButtonDisabled.light.text,
 
-		backdrop: "rgba(15, 23, 42, 0.35)",
+		backdrop: "rgba(0, 0, 0, 0.18)",
 	},
 };
 
@@ -53,21 +53,21 @@ const baseDark: MD3Theme = {
 	colors: {
 		...DefaultDarkTheme.colors,
 
-		primary: baiColors.blue[400],
-		primaryContainer: baiColors.blue[500],
+		primary: "#0A84FF",
+		primaryContainer: "#409CFF",
 
-		secondary: baiColors.indigo[400],
-		secondaryContainer: baiColors.indigo[500],
+		secondary: "#5E5CE6",
+		secondaryContainer: "#7D7AFF",
 
 		background: baiSemanticColors.surfacesDark.background,
 		surface: baiSemanticColors.surfacesDark.surface,
 		surfaceVariant: baiSemanticColors.surfacesDark.surfaceVariant,
 
-		// Borders — SaaS neutral
+		// Borders — Apple-style dark separators
 		outline: baiSemanticColors.surfacesDark.borderSubtle,
-		outlineVariant: baiColors.neutral[600],
+		outlineVariant: baiSemanticColors.surfacesDark.borderStrong,
 
-		error: baiSemanticColors.error.dark,
+		error: "#FF453A",
 		errorContainer: baiColors.red[900],
 
 		onPrimary: baiSemanticColors.textDark.onPrimary,
@@ -80,7 +80,7 @@ const baseDark: MD3Theme = {
 		surfaceDisabled: baiButtonDisabled.dark.background,
 		onSurfaceDisabled: baiButtonDisabled.dark.text,
 
-		backdrop: "rgba(32, 33, 36, 0.72)",
+		backdrop: "rgba(0, 0, 0, 0.72)",
 	},
 };
 

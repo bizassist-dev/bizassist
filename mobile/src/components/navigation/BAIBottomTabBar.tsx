@@ -37,7 +37,7 @@ const CANONICAL_SET = new Set<CanonicalTab>(TAB_ORDER);
 
 const ICONS: Record<CanonicalTab, TabIconSpec> = {
 	home: { family: "material", name: "clipboard-clock" },
-	inventory: { family: "material", name: "package-variant" },
+	inventory: { family: "material", name: "package" },
 	pos: { family: "material", name: "cash-register" },
 	settings: { family: "material", name: "cog" },
 };
@@ -49,22 +49,22 @@ const LABELS: Record<CanonicalTab, string> = {
 	settings: "Settings",
 };
 
-const DOCK_HEIGHT = 68;
+const DOCK_HEIGHT = 64;
 const DOCK_RADIUS = 999;
-const SCAN_BUTTON_SIZE = 68;
+const SCAN_BUTTON_SIZE = DOCK_HEIGHT;
 
-const INSET = 6;
+const INSET = 3;
 const DOCK_ITEM_GAP = 2;
-const CLUSTER_GAP = 8;
+const ACTIVE_INDICATOR_INSET = 2;
+const DOCK_SCAN_GAP = 8;
 const OUTER_HORIZONTAL_MARGIN = 10;
 const BOTTOM_SAFE_AREA_REDUCTION = 8;
-// Material glyphs do not render at equal optical size with equal numeric sizes,
-// so these are calibrated for visual parity in the dock.
+const INVENTORY_LABEL_OFFSET = -1;
 const TAB_ICON_SIZES: Record<CanonicalTab, number> = {
-	home: 25,
+	home: 27,
 	inventory: 27,
-	pos: 25,
-	settings: 26,
+	pos: 27,
+	settings: 27,
 };
 
 /**
@@ -249,19 +249,23 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 	const bottom = Math.max(insets.bottom - BOTTOM_SAFE_AREA_REDUCTION, 2);
 
 	const outlineBase = theme.colors.outlineVariant ?? theme.colors.outline;
-	const dockBg = applyAlpha(theme.colors.surface, theme.dark ? 0.93 : 0.97);
-	const containerBorderColor = applyAlpha(outlineBase, theme.dark ? 0.78 : 0.48);
-	const activeBorderColor = applyAlpha(outlineBase, theme.dark ? 0.34 : 0.14);
+	const dockBg = applyAlpha(theme.colors.surface, theme.dark ? 0.72 : 0.9);
+	const containerBorderColor = applyAlpha(outlineBase, theme.dark ? 0.72 : 0.44);
+	const activeBorderColor = applyAlpha(outlineBase, theme.dark ? 0.34 : 0.18);
+	const glassInnerStroke = applyAlpha(theme.colors.onSurface, theme.dark ? 0.06 : 0.08);
 
-	const activeBubbleBg = applyAlpha(theme.colors.onSurface, theme.dark ? 0.14 : 0.08);
+	const activeBubbleBg = theme.dark
+		? applyAlpha(theme.colors.surfaceVariant ?? theme.colors.surface, 0.96)
+		: applyAlpha(theme.colors.onSurface, 0.08);
 
-	const scanButtonBg = applyAlpha(theme.colors.surface, theme.dark ? 0.96 : 0.99);
-	const scanButtonBorderColor = applyAlpha(outlineBase, theme.dark ? 0.82 : 0.56);
+	const scanButtonBg = applyAlpha(theme.colors.surface, theme.dark ? 0.76 : 0.92);
+	const scanButtonBorderColor = containerBorderColor;
 
-	const iconIdle = theme.dark ? theme.colors.onSurface : theme.colors.onSurfaceVariant;
-	const iconActive = theme.colors.primary;
-	const labelIdle = theme.dark ? theme.colors.onSurface : theme.colors.onSurfaceVariant;
-	const labelActive = theme.colors.primary;
+	const tabForegroundColor = theme.dark ? "#FFFFFF" : "#000000";
+	const iconIdle = tabForegroundColor;
+	const iconActive = tabForegroundColor;
+	const labelIdle = tabForegroundColor;
+	const labelActive = tabForegroundColor;
 
 	const wrapperStyle = useMemo(
 		() => [styles.wrapper, { left: OUTER_HORIZONTAL_MARGIN, right: OUTER_HORIZONTAL_MARGIN, bottom }],
@@ -383,6 +387,10 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		const totalGapWidth = DOCK_ITEM_GAP * (TAB_ORDER.length - 1);
 		return (rowWidth - totalGapWidth) / TAB_ORDER.length;
 	}, [rowWidth]);
+	const activeIndicatorWidth = useMemo(
+		() => Math.max(activeSegmentWidth - ACTIVE_INDICATOR_INSET * 2, 0),
+		[activeSegmentWidth],
+	);
 
 	useEffect(() => {
 		if (activeSegmentWidth <= 0) return;
@@ -462,6 +470,8 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		<View pointerEvents='box-none' style={wrapperStyle}>
 			<View style={styles.cluster}>
 				<View style={dockStyle}>
+					<View pointerEvents='none' style={[styles.glassFill, { backgroundColor: dockBg }]} />
+					<View pointerEvents='none' style={[styles.glassInnerStroke, { borderColor: glassInnerStroke }]} />
 					<View
 						style={styles.row}
 						onLayout={(event) => {
@@ -471,13 +481,13 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 							}
 						}}
 					>
-						{activeSegmentWidth > 0 ? (
+						{activeIndicatorWidth > 0 ? (
 							<Animated.View
 								pointerEvents='none'
 								style={[
 									styles.activeIndicator,
 									{
-										width: activeSegmentWidth,
+										width: activeIndicatorWidth,
 										backgroundColor: activeBubbleBg,
 										borderColor: activeBorderColor,
 										opacity: activeOpacity,
@@ -525,7 +535,11 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 
 										<BAIText
 											variant='caption'
-											style={[styles.label, { color: visualIsFocused ? labelActive : labelIdle }]}
+											style={[
+												styles.label,
+												key === "inventory" ? styles.inventoryLabel : null,
+												{ color: visualIsFocused ? labelActive : labelIdle },
+											]}
 											numberOfLines={1}
 										>
 											{LABELS[key]}
@@ -546,6 +560,8 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 					style={scanButtonStyle}
 					hitSlop={8}
 				>
+					<View pointerEvents='none' style={[styles.glassFill, { backgroundColor: scanButtonBg }]} />
+					<View pointerEvents='none' style={[styles.glassInnerStroke, { borderColor: glassInnerStroke }]} />
 					<MaterialCommunityIcons name='barcode-scan' size={28} color={scanIconColor} />
 				</Pressable>
 			</View>
@@ -567,11 +583,11 @@ const styles = StyleSheet.create({
 
 	cluster: {
 		width: "100%",
-		maxWidth: 480 + SCAN_BUTTON_SIZE + CLUSTER_GAP,
+		maxWidth: 480 + SCAN_BUTTON_SIZE + DOCK_SCAN_GAP,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		gap: CLUSTER_GAP,
+		gap: DOCK_SCAN_GAP,
 	},
 
 	dock: {
@@ -581,12 +597,23 @@ const styles = StyleSheet.create({
 		borderWidth: StyleSheet.hairlineWidth,
 		padding: INSET,
 		justifyContent: "center",
+		overflow: "hidden",
 
 		shadowColor: "#000",
-		shadowOpacity: 0.08,
-		shadowRadius: 10,
-		shadowOffset: { width: 0, height: 4 },
-		elevation: 3,
+		shadowOpacity: 0.16,
+		shadowRadius: 18,
+		shadowOffset: { width: 0, height: 8 },
+		elevation: 6,
+	},
+
+	glassFill: {
+		...StyleSheet.absoluteFillObject,
+	},
+
+	glassInnerStroke: {
+		...StyleSheet.absoluteFillObject,
+		borderRadius: DOCK_RADIUS,
+		borderWidth: StyleSheet.hairlineWidth,
 	},
 
 	row: {
@@ -599,9 +626,9 @@ const styles = StyleSheet.create({
 
 	activeIndicator: {
 		position: "absolute",
-		top: 0,
-		bottom: 0,
-		left: 0,
+		top: ACTIVE_INDICATOR_INSET,
+		bottom: ACTIVE_INDICATOR_INSET,
+		left: ACTIVE_INDICATOR_INSET,
 		borderRadius: 999,
 		borderWidth: StyleSheet.hairlineWidth,
 	},
@@ -632,16 +659,20 @@ const styles = StyleSheet.create({
 		borderWidth: StyleSheet.hairlineWidth,
 		alignItems: "center",
 		justifyContent: "center",
+		overflow: "hidden",
 
 		shadowColor: "#000",
-		shadowOpacity: 0.1,
-		shadowRadius: 10,
-		shadowOffset: { width: 0, height: 4 },
-		elevation: 3,
+		shadowOpacity: 0.16,
+		shadowRadius: 18,
+		shadowOffset: { width: 0, height: 8 },
+		elevation: 6,
 	},
 
 	label: {
 		fontSize: 10,
 		lineHeight: 12,
+	},
+	inventoryLabel: {
+		marginTop: INVENTORY_LABEL_OFFSET,
 	},
 });

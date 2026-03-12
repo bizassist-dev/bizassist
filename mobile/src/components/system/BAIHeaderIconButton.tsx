@@ -55,7 +55,8 @@ export function BAIHeaderIconButton(props: BAIHeaderIconButtonProps) {
 	const theme = useTheme();
 	const neutralButtonBg = theme.dark
 		? (theme.colors.surfaceVariant ?? theme.colors.surfaceDisabled ?? theme.colors.surface)
-		: (theme.colors.outline ?? theme.colors.surfaceDisabled ?? theme.colors.surfaceVariant);
+		: (theme.colors.surfaceVariant ?? theme.colors.surfaceDisabled ?? theme.colors.surface);
+	const neutralBorderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 
 	const { disabled, onPress, wrapStyle, buttonStyle } = props;
 
@@ -98,6 +99,8 @@ export function BAIHeaderIconButton(props: BAIHeaderIconButtonProps) {
 						height: visual.hitSize,
 						borderRadius: visual.radius,
 						backgroundColor: neutralButtonBg,
+						borderColor: neutralBorderColor,
+						borderWidth: StyleSheet.hairlineWidth,
 						opacity: disabled ? 0.6 : 1,
 					},
 					buttonStyle,

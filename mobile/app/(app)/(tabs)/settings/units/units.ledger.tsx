@@ -186,8 +186,18 @@ export function UnitsLedgerScreen({
 		if (!lockNav()) return;
 		router.replace(mode === "settings" ? (SETTINGS_ROUTE as any) : (INVENTORY_ROUTE as any));
 	}, [isUiDisabled, lockNav, mode, router]);
-	const settingsHeaderOptions = useAppHeader("detail", { title: "Unit Management", disabled: isUiDisabled, onBack });
-	const inventoryHeaderOptions = useInventoryHeader("detail", { title: "Unit Management", disabled: isUiDisabled, onBack });
+	const settingsHeaderOptions = useAppHeader("detail", {
+		title: "Unit Management",
+		disabled: isUiDisabled,
+		onBack,
+		showAvatarPlaceholder: true,
+	});
+	const inventoryHeaderOptions = useInventoryHeader("detail", {
+		title: "Unit Management",
+		disabled: isUiDisabled,
+		onBack,
+		showAvatarPlaceholder: true,
+	});
 	const headerOptions = mode === "settings" ? settingsHeaderOptions : inventoryHeaderOptions;
 
 	const unitsQuery = useQuery<Unit[]>({

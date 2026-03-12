@@ -27,8 +27,8 @@ export type BAICardProps = {
 export function BAICard({ children, style, padded = true, bordered = true }: BAICardProps) {
 	const theme = useTheme();
 
-	const borderColor = theme.colors.outline;
-	const borderWidth = 1;
+	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const borderWidth = StyleSheet.hairlineWidth;
 
 	return (
 		<BAISurface
@@ -49,15 +49,15 @@ export function BAICard({ children, style, padded = true, bordered = true }: BAI
 
 const styles = StyleSheet.create({
 	container: {
-		borderRadius: 24,
+		borderRadius: 22,
 		marginBottom: 12,
 	},
 	clipper: {
-		borderRadius: 24,
+		borderRadius: 22,
 		overflow: "hidden",
 	},
 	padded: {
-		paddingVertical: 12,
-		paddingHorizontal: 12,
+		paddingVertical: 14,
+		paddingHorizontal: 14,
 	},
 });

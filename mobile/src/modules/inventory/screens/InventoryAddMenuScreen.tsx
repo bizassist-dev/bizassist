@@ -111,10 +111,15 @@ export default function InventoryAddMenu({ routeScope = "inventory" }: { routeSc
 	const dividerColor = theme.colors.outlineVariant ?? theme.colors.outline;
 
 	return (
-		<BAIInlineHeaderScaffold title='Create New' variant='exit' onLeftPress={onExit} disabled={isNavLocked}>
+		<BAIInlineHeaderScaffold
+			title='Create New'
+			variant='exit'
+			onLeftPress={onExit}
+			disabled={isNavLocked}
+		>
 			<BAIScreen padded={false} safeTop={false} style={styles.root}>
 				<View style={styles.screen}>
-					<BAISurface style={[styles.card, { borderColor: dividerColor }]}>
+					<BAISurface style={[styles.card, { borderColor: dividerColor }]} padded={false}>
 						<View style={styles.cardBody}>
 							<AddMenuList items={menuItems} disabled={isNavLocked} />
 						</View>
@@ -127,12 +132,12 @@ export default function InventoryAddMenu({ routeScope = "inventory" }: { routeSc
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12 },
+	screen: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
 
 	card: {
-		borderWidth: 1,
-		borderRadius: 18,
-		overflow: "hidden",
+		backgroundColor: "transparent",
+		borderWidth: 0,
+		overflow: "visible",
 	},
 
 	cardBody: {

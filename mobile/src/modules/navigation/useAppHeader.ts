@@ -20,6 +20,7 @@ export type UseAppHeaderOptions = {
 	title?: string;
 	headerBackTitle?: string;
 	backLabel?: string;
+	showAvatarPlaceholder?: boolean;
 	disabled?: boolean;
 	onBack?: () => void;
 	onExit?: () => void;
@@ -48,6 +49,7 @@ export function useAppHeader(screenClass: AppScreenClass, options?: UseAppHeader
 
 	const title = options?.title;
 	const headerBackTitle = options?.headerBackTitle ?? options?.backLabel;
+	const showAvatarPlaceholder = !!options?.showAvatarPlaceholder;
 	const disabled = !!options?.disabled;
 	const onBack = options?.onBack;
 	const onExit = options?.onExit;
@@ -104,6 +106,7 @@ export function useAppHeader(screenClass: AppScreenClass, options?: UseAppHeader
 					React.createElement(BAIHeader as any, {
 						title: title ?? "",
 						variant: "back",
+						showAvatarPlaceholder,
 						disabled,
 						onLeftPress: () => {
 							if (disabled) return;
@@ -124,6 +127,7 @@ export function useAppHeader(screenClass: AppScreenClass, options?: UseAppHeader
 				React.createElement(BAIHeader as any, {
 					title: title ?? "",
 					variant: "exit",
+					showAvatarPlaceholder,
 					disabled,
 					onLeftPress: () => {
 						if (disabled) return;
@@ -149,6 +153,7 @@ export function useAppHeader(screenClass: AppScreenClass, options?: UseAppHeader
 		onExit,
 		router,
 		screenClass,
+		showAvatarPlaceholder,
 		sharedBase,
 		title,
 	]);

@@ -21,6 +21,57 @@ Quick index:
 - See **2026-03-12 — Realtime Invalidation Architecture Lock** for cross-device inventory/POS convergence via business-scoped websocket invalidation.
 - See **2026-03-12 — Operational Sync Badge vs Pull-To-Refresh Lock** for Inventory/POS row-list sync UX governance under realtime invalidation.
 - See **2026-03-12 — Auth Device Cap Lock** for install-scoped device binding and active-device session cap governance.
+- See **2026-03-12 — Bottom Tab Bar Dock Geometry Lock** for the canonical floating dock, scan button, active indicator, icon sizing, and border treatment rules.
+- See **2026-03-12 — Top Header Avatar Placement Lock** for where user-avatar placeholders belong in the app header hierarchy.
+
+## 2026-03-12 — Bottom Tab Bar Dock Geometry Lock
+
+### Memory Lock
+
+- Canonical policy name is **Bottom Tab Bar Dock Geometry**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `0.12 Bottom Tab Bar Dock Geometry (Locked)`
+
+### Locked Decisions
+
+- Bottom tab bar remains a floating dock with a detached scan button.
+- Dock height is locked at `64`.
+- Scan button size must mirror dock height exactly and must derive from the same source-of-truth value.
+- Dock container inset must stay equal on both axes and is currently locked at `3`.
+- Active indicator inset must stay equal on both axes and is currently locked at `2`.
+- Dock-to-scan gap is locked at `8`.
+- All four bottom-tab icons must use equal numeric size and are currently locked at `27`.
+- Dock and scan button borders must use the same border color treatment.
+- Dock, active indicator, and scan button borders must remain `StyleSheet.hairlineWidth`.
+- The bottom tab bar background may use a glass/translucent treatment, but it must remain flat and non-reflective:
+  - no top highlight sheen;
+  - no bottom shade sheen;
+  - keep only the translucent base fill plus subtle inner stroke.
+
+### Enforcement
+
+- Future bottom-tab-bar refactors must preserve these values unless the lock is explicitly revised in both memory and masterplan.
+
+## 2026-03-12 — Top Header Avatar Placement Lock
+
+### Memory Lock
+
+- Canonical policy name is **Top Header Avatar Placement**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `1.10.1 Top Header Avatar Placement Governance (Locked)`
+
+### Locked Decisions
+
+- Top-header avatar placeholders are allowed on workspace pages and list/index destination pages.
+- Top-header avatar placeholders must not be shown by default on process screens, picker screens, detail screens, scan flows, or confirmation flows.
+- The avatar is treated as an app-level identity anchor, not a universal decoration for every header.
+- Reusable header APIs may support avatar placeholders, but screens must opt in deliberately.
+- Custom right-header action clusters may include both an action button and an avatar only when the screen is a destination/index surface and the title remains visually balanced.
+
+### Enforcement
+
+- New header work must start from the rule: avatar on destination/index pages, no avatar on task/process flows.
+- Any exception requires an explicit product reason and must preserve title centering and header action clarity.
 
 ## 2026-03-12 — Inventory Realtime Image Sync Lock
 

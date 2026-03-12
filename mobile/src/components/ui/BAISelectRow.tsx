@@ -19,7 +19,7 @@ export function BAISelectRow({ label, value, buttonLabel = "Select", onPress, di
 	const theme = useTheme();
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
-	const surface = theme.colors.surfaceVariant ?? theme.colors.surface;
+	const surface = theme.colors.surface;
 
 	const textPrimary = theme.colors.onSurface;
 	const textMuted = theme.colors.onSurfaceVariant ?? theme.colors.onSurface;
@@ -60,9 +60,9 @@ export function BAISelectRow({ label, value, buttonLabel = "Select", onPress, di
 
 const styles = StyleSheet.create({
 	container: {
-		borderWidth: 1,
-		borderRadius: 12,
-		paddingVertical: 10,
+		borderWidth: StyleSheet.hairlineWidth,
+		borderRadius: 16,
+		paddingVertical: 12,
 		paddingLeft: 14,
 		paddingRight: 10,
 		flexDirection: "row",

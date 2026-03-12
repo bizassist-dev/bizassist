@@ -25,12 +25,12 @@ import {
 
 type BAIButtonSize = "sm" | "md" | "lg";
 
-const HEIGHT_BY_SIZE: Record<BAIButtonSize, number> = { sm: 40, md: 48, lg: 56 };
-const H_PADDING_BY_SIZE: Record<BAIButtonSize, number> = { sm: 14, md: 16, lg: 18 };
-const FONT_BY_SIZE: Record<BAIButtonSize, number> = { sm: 14, md: 15, lg: 16 };
+const HEIGHT_BY_SIZE: Record<BAIButtonSize, number> = { sm: 40, md: 50, lg: 56 };
+const H_PADDING_BY_SIZE: Record<BAIButtonSize, number> = { sm: 14, md: 18, lg: 20 };
+const FONT_BY_SIZE: Record<BAIButtonSize, number> = { sm: 14, md: 16, lg: 17 };
 const ICON_BY_SIZE: Record<BAIButtonSize, number> = { sm: 18, md: 20, lg: 22 };
 
-const DEFAULT_RADIUS = 14;
+const DEFAULT_RADIUS = 16;
 
 const DISABLED_PREFERRED_DARK_TEXT = "#374151";
 const NEUTRAL_OUTLINE_PREFERRED_DARK_TEXT = "#111827";

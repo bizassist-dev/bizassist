@@ -8,11 +8,14 @@ import { BAIHeaderIconButton } from "@/components/system/BAIHeaderIconButton";
 import { BAIText } from "@/components/ui/BAIText";
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
+import { useAuth } from "@/modules/auth/AuthContext";
+import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 
 export type BAIHeaderProps = {
 	title: string;
 	variant: "back" | "exit";
 	rightSlot?: ReactNode | ((options: { disabled: boolean }) => ReactNode);
+	showAvatarPlaceholder?: boolean;
 	barHeight?: number;
 	rightRailWidth?: number;
 	titleHorizontalPadding?: number;
@@ -28,11 +31,13 @@ export type BAIHeaderProps = {
 const HEADER_BAR_HEIGHT = 56;
 const HEADER_ACTION_HEIGHT_XXL = 58;
 const HEADER_ACTION_WIDTH_XXL = 64;
+const HEADER_AVATAR_SIZE = 50;
 
 export function BAIHeader({
 	title,
 	variant,
 	rightSlot,
+	showAvatarPlaceholder = false,
 	barHeight = HEADER_BAR_HEIGHT,
 	rightRailWidth,
 	titleHorizontalPadding = 0,
@@ -46,11 +51,13 @@ export function BAIHeader({
 }: BAIHeaderProps) {
 	const router = useRouter();
 	const theme = useTheme();
+	const { user } = useAuth();
 	const insets = useSafeAreaInsets();
 	const { paddingX } = useResponsiveLayout();
 	const { busy } = useAppBusy();
 	const fallbackTopInset = initialWindowMetrics?.insets.top ?? 0;
 	const resolvedTopInset = Math.max(insets.top, fallbackTopInset);
+	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 
 	const tapLockRef = useRef(false);
 	const [isTapLocked, setIsTapLocked] = useState(false);
@@ -88,12 +95,38 @@ export function BAIHeader({
 	}, [lockTap, onRightPress, rightActionDisabled]);
 
 	const renderedRightSlot = useMemo(() => {
+		if (!rightSlot && showAvatarPlaceholder) {
+			return (
+				<View
+					style={[
+						styles.avatarPlaceholder,
+						{
+							borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
+							backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+						},
+					]}
+				>
+					<BAIText variant='subtitle' style={styles.avatarPlaceholderText}>
+						{userAvatarInitials}
+					</BAIText>
+				</View>
+			);
+		}
 		if (!rightSlot) return null;
 		if (typeof rightSlot === "function") {
 			return rightSlot({ disabled: rightActionDisabled });
 		}
 		return rightSlot;
-	}, [rightActionDisabled, rightSlot]);
+	}, [
+		rightActionDisabled,
+		rightSlot,
+		showAvatarPlaceholder,
+		theme.colors.outline,
+		theme.colors.outlineVariant,
+		theme.colors.surface,
+		theme.colors.surfaceVariant,
+		userAvatarInitials,
+	]);
 
 	const resolvedBarHeight = Math.max(56, barHeight || HEADER_BAR_HEIGHT);
 	const railSize = Math.max(HEADER_ACTION_WIDTH_XXL, resolvedBarHeight);
@@ -194,5 +227,17 @@ const styles = StyleSheet.create({
 		width: 44,
 		height: 44,
 		borderRadius: 22,
+	},
+	avatarPlaceholder: {
+		width: HEADER_AVATAR_SIZE,
+		height: HEADER_AVATAR_SIZE,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	avatarPlaceholderText: {
+		fontWeight: "700",
+		letterSpacing: 0.2,
 	},
 });

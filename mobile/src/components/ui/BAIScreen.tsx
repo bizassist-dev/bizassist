@@ -10,8 +10,9 @@ import { useTheme } from "react-native-paper";
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { useAppBackground } from "@/lib/theme/appBackground";
 
-const TAB_BAR_HEIGHT = 68;
+const TAB_BAR_HEIGHT = 64;
 const TAB_BAR_GUTTER = 12;
+const BOTTOM_SAFE_AREA_SCRIM_OVERLAP = 18;
 
 function clampAlpha(value: number): number {
 	if (!Number.isFinite(value)) return 1;
@@ -131,27 +132,18 @@ export function BAIScreen({
 	const showTopSafeGradient = safeAreaGradientTop && insets.top > 0;
 	const showBottomSafeGradient = safeAreaGradientBottom && insets.bottom > 0;
 	const topSafeHeight = insets.top + 20;
-	const bottomSafeHeight = tabbed ? insets.bottom + TAB_BAR_HEIGHT + 18 : insets.bottom + 32;
+	const bottomSafeHeight = tabbed ? insets.bottom + TAB_BAR_HEIGHT + BOTTOM_SAFE_AREA_SCRIM_OVERLAP : insets.bottom + 32;
 
 	const topSafeGradientColors = theme.dark
 		? (["rgba(0,0,0,0.62)", "rgba(0,0,0,0.24)", "rgba(0,0,0,0)"] as const)
 		: (["rgba(255,255,255,0.95)", "rgba(255,255,255,0.58)", "rgba(255,255,255,0)"] as const);
-	const bottomDockBlendColor = colorWithAlpha(theme.colors.surface, theme.dark ? 0.8 : 0.9, theme.dark);
-	const bottomSafeGradientColors = tabbed
+	const bottomSafeGradientColors = theme.dark
 		? ([
-				colorWithAlpha(backgroundColor, 0, theme.dark),
-				colorWithAlpha(backgroundColor, theme.dark ? 0.22 : 0.16, theme.dark),
-				colorWithAlpha(backgroundColor, theme.dark ? 0.46 : 0.3, theme.dark),
-				bottomDockBlendColor,
+				colorWithAlpha(backgroundColor, 0, true),
+				colorWithAlpha(backgroundColor, 0.78, true),
+				colorWithAlpha(backgroundColor, 1, true),
 			] as const)
-		: theme.dark
-			? ([
-					colorWithAlpha(backgroundColor, 0, true),
-					colorWithAlpha(backgroundColor, 0.78, true),
-					colorWithAlpha(backgroundColor, 1, true),
-				] as const)
-			: (["rgba(255,255,255,0)", "rgba(255,255,255,0.82)", "rgba(255,255,255,1)"] as const);
-	const bottomSafeGradientLocations = tabbed ? ([0, 0.32, 0.68, 1] as const) : undefined;
+		: (["rgba(255,255,255,0)", "rgba(255,255,255,0.82)", "rgba(255,255,255,1)"] as const);
 
 	/**
 	 * Base content styling shared by scroll + non-scroll.
@@ -197,7 +189,6 @@ export function BAIScreen({
 					<LinearGradient
 						pointerEvents='none'
 						colors={bottomSafeGradientColors}
-						locations={bottomSafeGradientLocations}
 						style={[styles.safeGradientOverlay, styles.safeGradientBottom, { height: bottomSafeHeight }]}
 					/>
 				) : null}
@@ -219,7 +210,6 @@ export function BAIScreen({
 				<LinearGradient
 					pointerEvents='none'
 					colors={bottomSafeGradientColors}
-					locations={bottomSafeGradientLocations}
 					style={[styles.safeGradientOverlay, styles.safeGradientBottom, { height: bottomSafeHeight }]}
 				/>
 			) : null}
@@ -241,7 +231,7 @@ const styles = StyleSheet.create({
 		position: "absolute",
 		left: 0,
 		right: 0,
-		zIndex: 1,
+		zIndex: 20,
 	},
 	safeGradientTop: {
 		top: 0,

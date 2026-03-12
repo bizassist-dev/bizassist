@@ -1822,8 +1822,8 @@ export default function InventoryProductCreateScreen({
 												special requests.
 											</BAIText>
 											<BAIButton
-												variant='subtle'
-												intent='neutral'
+												variant='solid'
+												intent='primary'
 												shape='default'
 												onPress={() => {
 													dismissMoneyKeyboardIfOpen();
@@ -1913,7 +1913,7 @@ const styles = StyleSheet.create({
 	},
 	formContainer: {
 		flexGrow: 1,
-		paddingTop: 8,
+		paddingTop: 0,
 		paddingBottom: 8,
 		gap: FORM_VERTICAL_GAP,
 	},

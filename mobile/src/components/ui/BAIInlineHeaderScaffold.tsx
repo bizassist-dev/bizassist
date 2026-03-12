@@ -10,6 +10,7 @@ type BAIInlineHeaderScaffoldProps = {
 	variant: "back" | "exit";
 	onLeftPress?: () => void;
 	disabled?: boolean;
+	showAvatarPlaceholder?: boolean;
 	children: ReactNode;
 	style?: StyleProp<ViewStyle>;
 };
@@ -19,6 +20,7 @@ export function BAIInlineHeaderScaffold({
 	variant,
 	onLeftPress,
 	disabled = false,
+	showAvatarPlaceholder = false,
 	children,
 	style,
 }: BAIInlineHeaderScaffoldProps) {
@@ -27,7 +29,13 @@ export function BAIInlineHeaderScaffold({
 	return (
 		<View style={[styles.root, { backgroundColor: theme.colors.background }, style]}>
 			<Stack.Screen options={{ headerShown: false }} />
-			<BAIHeader title={title} variant={variant} onLeftPress={onLeftPress} disabled={disabled} />
+			<BAIHeader
+				title={title}
+				variant={variant}
+				onLeftPress={onLeftPress}
+				disabled={disabled}
+				showAvatarPlaceholder={showAvatarPlaceholder}
+			/>
 			{children}
 		</View>
 	);

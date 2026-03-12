@@ -44,12 +44,12 @@ export const BAITextInput = React.forwardRef<any, BAITextInputProps>(function BA
 ) {
 	const theme = useTheme();
 
-	const resolvedOutlineColor = outlineColor ?? (theme.dark ? theme.colors.outline : theme.colors.outlineVariant);
+	const resolvedOutlineColor = outlineColor ?? (theme.colors.outlineVariant ?? theme.colors.outline);
 
 	const resolvedActiveOutlineColor = activeOutlineColor ?? theme.colors.primary;
 
-	const outlineRadius = shape === "pill" ? 999 : 16;
-	const inputRadius = shape === "pill" ? 999 : 10;
+	const outlineRadius = shape === "pill" ? 999 : 14;
+	const inputRadius = shape === "pill" ? 999 : 14;
 	const resolvedLines = typeof numberOfLines === "number" ? numberOfLines : multiline ? 3 : 1;
 	const resolvedScrollEnabled = typeof scrollEnabled === "boolean" ? scrollEnabled : multiline;
 	const sanitizeEnabled = sanitizeOptions?.enabled ?? true;
@@ -121,8 +121,8 @@ export const BAITextInput = React.forwardRef<any, BAITextInputProps>(function BA
 			<TextInput
 				ref={ref}
 				mode='outlined'
-				style={[styles.input, fixedHeightStyle, style]}
-				outlineStyle={[styles.outline, { borderRadius: outlineRadius }]}
+				style={[styles.input, { backgroundColor: theme.colors.surface }, fixedHeightStyle, style]}
+				outlineStyle={[styles.outline, { borderRadius: outlineRadius, borderWidth: StyleSheet.hairlineWidth }]}
 				error={error}
 				outlineColor={resolvedOutlineColor}
 				activeOutlineColor={resolvedActiveOutlineColor}
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
 		marginBottom: 4,
 	},
 	outline: {
-		borderRadius: 16,
+		borderRadius: 14,
 	},
 	centeredText: {
 		textAlignVertical: "center",

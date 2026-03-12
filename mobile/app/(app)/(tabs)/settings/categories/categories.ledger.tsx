@@ -9,7 +9,7 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { FlatList, Keyboard, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
+import { FlatList, Keyboard, Pressable, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 
@@ -25,12 +25,14 @@ import { BAIText } from "@/components/ui/BAIText";
 import { SettingsScreenLayout } from "@/components/settings/SettingsLayout";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
+import { useAuth } from "@/modules/auth/AuthContext";
 import { categoriesApi } from "@/modules/categories/categories.api";
 import { useCategoryVisibilityQuery } from "@/modules/categories/categories.queries";
 import { categoryKeys } from "@/modules/categories/categories.queryKeys";
 import type { Category } from "@/modules/categories/categories.types";
 import { CategoryRow } from "@/modules/categories/components/CategoryRow";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
+import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
 import { FIELD_LIMITS } from "@/shared/fieldLimits";
 import { sanitizeSearchInput } from "@/shared/validation/sanitize";
@@ -72,9 +74,11 @@ export function CategoriesLedgerScreen({
 	const router = useRouter();
 	const theme = useTheme();
 	const { countryCode } = useActiveBusinessMeta();
+	const { user } = useAuth();
 	const { busy } = useAppBusy();
 	const isBusy = !!busy?.isBusy;
 	const isTablet = layout === "tablet";
+	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 
 	const tabBarHeight = useBottomTabBarHeight();
 	const TAB_KISS_GAP = 12;
@@ -226,11 +230,37 @@ export function CategoriesLedgerScreen({
 					title='Manage Categories'
 					variant='back'
 					onLeftPress={onBack}
-					onRightPress={onCreate}
 					disabled={isUiDisabled}
+					rightRailWidth={118}
 					rightSlot={({ disabled }) => (
-						<View style={[styles.addCircle, { backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 }]}>
-							<MaterialCommunityIcons name='plus' size={28} color={theme.colors.onPrimary} />
+						<View style={styles.headerActions}>
+							<Pressable
+								onPress={onCreate}
+								disabled={disabled}
+								accessibilityRole='button'
+								accessibilityLabel='Create category'
+								hitSlop={8}
+								style={({ pressed }) => [
+									styles.addCircle,
+									{ backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 },
+									pressed && !disabled ? styles.headerActionPressed : null,
+								]}
+							>
+								<MaterialCommunityIcons name='plus' size={30} color={theme.colors.onPrimary} />
+							</Pressable>
+							<View
+								style={[
+									styles.headerAvatar,
+									{
+										borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
+										backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+									},
+								]}
+							>
+								<BAIText variant='subtitle' style={styles.headerAvatarText}>
+									{userAvatarInitials}
+								</BAIText>
+							</View>
 						</View>
 					)}
 				/>
@@ -350,10 +380,30 @@ const styles = StyleSheet.create({
 	visibilityRow: {
 		marginTop: 0,
 	},
+	headerActions: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+	},
+	headerActionPressed: {
+		opacity: 0.78,
+	},
+	headerAvatar: {
+		width: 50,
+		height: 50,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	headerAvatarText: {
+		fontWeight: "700",
+		letterSpacing: 0.2,
+	},
 	addCircle: {
-		width: 44,
-		height: 44,
-		borderRadius: 22,
+		width: 50,
+		height: 50,
+		borderRadius: 25,
 		alignItems: "center",
 		justifyContent: "center",
 	},

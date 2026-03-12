@@ -63,9 +63,8 @@ export function BAISearchBar({
 
 	const isDisabled = !!disabled;
 
-	// Use existing theme tokens to stay consistent across light/dark.
 	const bg = theme.colors.surface;
-	const border = theme.dark ? theme.colors.outline : (theme.colors.outlineVariant ?? theme.colors.outline);
+	const border = theme.colors.outline;
 	const textColor = theme.colors.onSurface;
 	const placeholderColor = theme.colors.onSurfaceVariant ?? theme.colors.onSurfaceDisabled ?? theme.colors.outline;
 
@@ -163,12 +162,11 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		overflow: "hidden",
 
-		// Soft “floating” look similar to the screenshot (platform-safe).
 		shadowColor: "#000",
-		shadowOpacity: 0.12,
-		shadowRadius: 10,
-		shadowOffset: { width: 0, height: 3 },
-		elevation: 2,
+		shadowOpacity: 0.04,
+		shadowRadius: 6,
+		shadowOffset: { width: 0, height: 2 },
+		elevation: 1,
 	},
 	iconLeft: {
 		position: "absolute",

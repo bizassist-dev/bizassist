@@ -16,6 +16,8 @@ import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
+import { useAuth } from "@/modules/auth/AuthContext";
+import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { modifiersApi } from "@/modules/modifiers/modifiers.api";
 import type { ModifierGroup } from "@/modules/modifiers/modifiers.types";
@@ -142,8 +144,10 @@ export function ModifiersLedgerScreen() {
 	const router = useRouter();
 	const theme = useTheme();
 	const { isTablet } = useResponsiveLayout();
+	const { user } = useAuth();
 	const params = useLocalSearchParams<{ filter?: string; scannedBarcode?: string }>();
 	const { countryCode } = useActiveBusinessMeta();
+	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 	const [search, setSearch] = useState("");
 	const [filter, setFilter] = useState<ModifierFilter>(() => resolveModifierFilter(params.filter));
 
@@ -222,11 +226,37 @@ export function ModifiersLedgerScreen() {
 				<BAIHeader
 					title='Modifiers'
 					variant='back'
+					rightRailWidth={118}
 					onLeftPress={onCancel}
-					onRightPress={onCreate}
 					rightSlot={({ disabled }) => (
-						<View style={[styles.addCircle, { backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 }]}>
-							<MaterialCommunityIcons name='plus' size={30} color={theme.colors.onPrimary} />
+						<View style={styles.headerActions}>
+							<Pressable
+								onPress={onCreate}
+								disabled={disabled}
+								accessibilityRole='button'
+								accessibilityLabel='Create modifier set'
+								hitSlop={8}
+								style={({ pressed }) => [
+									styles.addCircle,
+									{ backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 },
+									pressed && !disabled ? styles.headerActionPressed : null,
+								]}
+							>
+								<MaterialCommunityIcons name='plus' size={30} color={theme.colors.onPrimary} />
+							</Pressable>
+							<View
+								style={[
+									styles.headerAvatar,
+									{
+										borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
+										backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+									},
+								]}
+							>
+								<BAIText variant='subtitle' style={styles.headerAvatarText}>
+									{userAvatarInitials}
+								</BAIText>
+							</View>
 						</View>
 					)}
 				/>
@@ -358,10 +388,30 @@ const styles = StyleSheet.create({
 	groupTabsWrap: {
 		paddingTop: 2,
 	},
+	headerActions: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+	},
+	headerActionPressed: {
+		opacity: 0.78,
+	},
 	listSection: { flex: 1, minHeight: 0 },
 	list: { flex: 1, minHeight: 0 },
 	stateWrap: { paddingTop: 8, alignItems: "flex-start" },
 	listContent: { gap: 0, paddingBottom: 200 },
+	headerAvatar: {
+		width: 50,
+		height: 50,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	headerAvatarText: {
+		fontWeight: "700",
+		letterSpacing: 0.2,
+	},
 	row: {
 		borderWidth: 1,
 		borderRadius: 12,
@@ -412,9 +462,9 @@ const styles = StyleSheet.create({
 		minWidth: 102,
 	},
 	addCircle: {
-		width: 44,
-		height: 44,
-		borderRadius: 22,
+		width: 50,
+		height: 50,
+		borderRadius: 25,
 		alignItems: "center",
 		justifyContent: "center",
 	},

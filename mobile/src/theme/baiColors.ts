@@ -120,6 +120,39 @@ export const baiColors = {
 	},
 } as const;
 
+const appleDarkTokens = {
+	background: "#000000",
+	secondarySystemBackground: "#1C1C1E",
+	tertiarySystemBackground: "#2C2C2E",
+	quaternarySystemBackground: "#3A3A3C",
+	separator: "#38383A",
+	opaqueSeparator: "#545458",
+	label: "#FFFFFF",
+	secondaryLabel: "rgba(235, 235, 245, 0.6)",
+	tertiaryLabel: "rgba(235, 235, 245, 0.3)",
+	systemBlue: "#0A84FF",
+	systemBlueEmphasis: "#409CFF",
+	systemIndigo: "#5E5CE6",
+	systemIndigoEmphasis: "#7D7AFF",
+	systemRed: "#FF453A",
+} as const;
+
+const appleLightTokens = {
+	background: "#F2F2F7",
+	secondarySystemBackground: "#FFFFFF",
+	tertiarySystemBackground: "#FFFFFF",
+	separator: "#D1D1D6",
+	opaqueSeparator: "#C6C6C8",
+	label: "#000000",
+	secondaryLabel: "rgba(60, 60, 67, 0.6)",
+	tertiaryLabel: "rgba(60, 60, 67, 0.3)",
+	systemBlue: "#007AFF",
+	systemBlueEmphasis: "#0060DF",
+	systemIndigo: "#5856D6",
+	systemIndigoEmphasis: "#4A48C4",
+	systemRed: "#FF3B30",
+} as const;
+
 /**
  * =====================================================
  * SEMANTIC TOKENS — consumed by components & theme
@@ -127,46 +160,46 @@ export const baiColors = {
  */
 export const baiSemanticColors = {
 	primary: {
-		main: baiColors.blue[600],
-		dark: baiColors.blue[600],
+		main: appleLightTokens.systemBlue,
+		dark: appleDarkTokens.systemBlue,
 		soft: baiColors.blue[50],
 		softBorder: baiColors.blue[200],
 	},
 	secondary: {
-		main: baiColors.indigo[600],
-		dark: baiColors.indigo[600],
+		main: appleLightTokens.systemIndigo,
+		dark: appleDarkTokens.systemIndigo,
 		soft: baiColors.indigo[50],
 		softBorder: baiColors.indigo[200],
 	},
 	success: {
-		main: baiColors.green[600],
-		dark: baiColors.green[700],
+		main: "#34C759",
+		dark: "#30D158",
 		soft: baiColors.green[50],
 		softBorder: baiColors.green[200],
 	},
 	warning: {
-		main: baiColors.orange[600],
-		dark: baiColors.orange[500],
+		main: "#FF9500",
+		dark: "#FF9F0A",
 		soft: baiColors.orange[50],
 		softBorder: baiColors.orange[200],
 	},
 	error: {
-		main: baiColors.red[600],
-		dark: baiColors.red[500],
+		main: appleLightTokens.systemRed,
+		dark: appleDarkTokens.systemRed,
 		soft: baiColors.red[50],
 		softBorder: baiColors.red[200],
 	},
 	info: {
-		main: baiColors.cyan[600],
-		dark: baiColors.cyan[700],
+		main: "#5AC8FA",
+		dark: "#64D2FF",
 		soft: baiColors.cyan[50],
 		softBorder: baiColors.cyan[200],
 	},
 
 	// ✅ Added: TEAL semantic group
 	teal: {
-		main: baiColors.teal[600],
-		dark: baiColors.teal[700],
+		main: "#30B0C7",
+		dark: "#40C8E0",
 		soft: baiColors.teal[50],
 		softBorder: baiColors.teal[200],
 	},
@@ -180,29 +213,29 @@ export const baiSemanticColors = {
 
 	// 🧱 LIGHT MODE SURFACES
 	surfaces: {
-		background: "#F1F5F9",
-		backgroundAlt: "#E5E7EB",
-		surface: "#FFFFFF",
-		surfaceSubtle: "#F9FAFB",
-		borderSubtle: "#E5E7EB",
-		borderStrong: "#CBD5F5",
+		background: appleLightTokens.background,
+		backgroundAlt: appleLightTokens.secondarySystemBackground,
+		surface: appleLightTokens.secondarySystemBackground,
+		surfaceSubtle: appleLightTokens.tertiarySystemBackground,
+		borderSubtle: appleLightTokens.separator,
+		borderStrong: appleLightTokens.opaqueSeparator,
 	},
 
 	// 🧱 DARK MODE SURFACES
 	surfacesDark: {
-		background: "#202124",
-		surface: "#1F1F1F",
-		surfaceElevated: "#303134",
-		surfaceVariant: "#2B2C2F",
-		borderSubtle: "#3C4043",
-		borderStrong: "#5F6368",
+		background: appleDarkTokens.background,
+		surface: appleDarkTokens.secondarySystemBackground,
+		surfaceElevated: appleDarkTokens.tertiarySystemBackground,
+		surfaceVariant: appleDarkTokens.quaternarySystemBackground,
+		borderSubtle: appleDarkTokens.separator,
+		borderStrong: appleDarkTokens.opaqueSeparator,
 	},
 
 	// 🔤 LIGHT MODE TEXT
 	text: {
-		primary: baiColors.gray[900],
-		secondary: baiColors.gray[700],
-		muted: baiColors.gray[500],
+		primary: appleLightTokens.label,
+		secondary: appleLightTokens.secondaryLabel,
+		muted: appleLightTokens.tertiaryLabel,
 		onPrimary: "#FFFFFF",
 		onSuccess: "#F8FAFC",
 		onDark: "#F9FAFB",
@@ -210,9 +243,9 @@ export const baiSemanticColors = {
 
 	// 🔤 DARK MODE TEXT
 	textDark: {
-		primary: "#E8EAED",
-		secondary: "#BDC1C6",
-		muted: "#9AA0A6",
+		primary: appleDarkTokens.label,
+		secondary: appleDarkTokens.secondaryLabel,
+		muted: appleDarkTokens.tertiaryLabel,
 		onPrimary: "#FFFFFF",
 	},
 } as const;
@@ -247,14 +280,14 @@ export type BAIButtonColorConfig = {
  */
 export const baiButtonDisabled = {
 	light: {
-		background: baiColors.neutral[300],
-		border: baiColors.neutral[500],
-		text: baiColors.neutral[800],
+		background: appleLightTokens.background,
+		border: appleLightTokens.separator,
+		text: "#8E8E93",
 	},
 	dark: {
-		background: "#2B2C2F",
-		border: "#3C4043",
-		text: "#9AA0A6",
+		background: baiSemanticColors.surfacesDark.surfaceElevated,
+		border: baiSemanticColors.surfacesDark.borderSubtle,
+		text: baiSemanticColors.textDark.muted,
 	},
 } as const;
 
@@ -302,14 +335,14 @@ type IntentGroup = {
 };
 
 const inverseVariantLight: BAIButtonColorConfig = {
-	background: baiColors.neutral[950],
-	border: baiColors.neutral[950],
+	background: appleLightTokens.label,
+	border: appleLightTokens.label,
 	text: "#FFFFFF",
 };
 
 const inverseVariantDark: BAIButtonColorConfig = {
 	background: baiSemanticColors.surfacesDark.surfaceElevated,
-	border: baiSemanticColors.surfacesDark.surfaceElevated,
+	border: baiSemanticColors.surfacesDark.borderSubtle,
 	text: "#FFFFFF",
 };
 
@@ -335,9 +368,9 @@ function buildIntentTheme(
 			text: group.dark,
 		},
 		subtle: {
-			background: baiColors.neutral[100],
-			border: baiColors.neutral[100],
-			text: baiColors.neutral[800],
+			background: appleLightTokens.background,
+			border: appleLightTokens.separator,
+			text: appleLightTokens.label,
 		},
 		ghost: {
 			background: "transparent",
@@ -355,23 +388,28 @@ function buildIntentTheme(
  * Hue remains constant; luminance shifts by mode.
  */
 const primaryGroupLight: IntentGroup = {
-	main: baiColors.blue[600],
-	dark: baiColors.blue[700],
+	main: appleLightTokens.systemBlue,
+	dark: appleLightTokens.systemBlueEmphasis,
 	soft: baiColors.blue[50],
 	softBorder: baiColors.blue[200],
 };
 
 const primaryGroupDark: IntentGroup = {
-	main: baiColors.blue[500],
-	dark: baiColors.blue[400],
+	main: appleDarkTokens.systemBlue,
+	dark: appleDarkTokens.systemBlueEmphasis,
 	soft: baiColors.blue[50],
 	softBorder: baiColors.blue[200],
 };
 
-const secondaryGroupLight: IntentGroup = baiSemanticColors.secondary;
+const secondaryGroupLight: IntentGroup = {
+	main: appleLightTokens.systemIndigo,
+	dark: appleLightTokens.systemIndigoEmphasis,
+	soft: baiColors.indigo[50],
+	softBorder: baiColors.indigo[200],
+};
 const secondaryGroupDark: IntentGroup = {
-	main: baiColors.indigo[500],
-	dark: baiColors.indigo[400],
+	main: appleDarkTokens.systemIndigo,
+	dark: appleDarkTokens.systemIndigoEmphasis,
 	soft: baiColors.indigo[50],
 	softBorder: baiColors.indigo[200],
 };
@@ -439,9 +477,9 @@ const neutralThemeLight: Record<BAIButtonVariant, BAIButtonColorConfig> = {
 		text: baiSemanticColors.text.onPrimary,
 	},
 	subtle: {
-		background: baiColors.neutral[200],
-		border: baiColors.neutral[200],
-		text: baiColors.neutral[900],
+		background: appleLightTokens.background,
+		border: appleLightTokens.separator,
+		text: appleLightTokens.label,
 	},
 	outline: {
 		background: "transparent",

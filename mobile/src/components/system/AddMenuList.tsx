@@ -27,65 +27,67 @@ export function AddMenuList({ items, disabled, titleVariant = "subtitle" }: AddM
 	const theme = useTheme();
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
-	const rowBg = theme.colors.surface;
+	const rowPressedBg = theme.colors.surfaceVariant ?? theme.colors.surface;
+	const listBg = theme.colors.surface;
 	const labelColor = theme.colors.onSurface;
 	const subtitleColor = theme.colors.onSurfaceVariant;
 	const chevronColor = theme.colors.onSurfaceVariant;
-	const iconBorderColor = borderColor;
-	const iconTint = chevronColor;
+	const iconBorderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const iconTint = theme.colors.onSurface;
+	const iconBg = theme.colors.background;
+	const separatorColor = theme.colors.outlineVariant ?? theme.colors.outline;
 
 	return (
-		<View style={styles.list}>
-			{items.map((item) => {
+		<View style={[styles.list, { backgroundColor: listBg, borderColor }]}>
+			{items.map((item, index) => {
 				const isDisabled = disabled || item.enabled === false;
+				const isLast = index === items.length - 1;
 
 				return (
-					<Pressable
-						key={item.key}
-						onPress={item.onPress}
-						disabled={isDisabled}
-						style={({ pressed }) => [
-							styles.row,
-							{
-								backgroundColor: rowBg,
-								borderColor,
-							},
-							pressed && !isDisabled && styles.pressed,
-							isDisabled && styles.disabled,
-						]}
-					>
-						<View style={styles.rowLeft}>
-							{item.icon ? (
-								<View style={[styles.iconCircle, { borderColor: iconBorderColor }]}>
-									{item.iconFamily === "ion" ? (
-										<Ionicons
-											name={item.icon as keyof typeof Ionicons.glyphMap}
-											size={item.iconSize ?? 20}
-											color={iconTint}
-										/>
-									) : (
-										<MaterialCommunityIcons
-											name={item.icon as keyof typeof MaterialCommunityIcons.glyphMap}
-											size={item.iconSize ?? 20}
-											color={iconTint}
-										/>
-									)}
+					<View key={item.key}>
+						<Pressable
+							onPress={item.onPress}
+							disabled={isDisabled}
+							style={({ pressed }) => [
+								styles.row,
+								pressed && !isDisabled ? { backgroundColor: rowPressedBg } : null,
+								isDisabled && styles.disabled,
+							]}
+						>
+							<View style={styles.rowLeft}>
+								{item.icon ? (
+									<View style={[styles.iconCircle, { borderColor: iconBorderColor, backgroundColor: iconBg }]}>
+										{item.iconFamily === "ion" ? (
+											<Ionicons
+												name={item.icon as keyof typeof Ionicons.glyphMap}
+												size={item.iconSize ?? 20}
+												color={iconTint}
+											/>
+										) : (
+											<MaterialCommunityIcons
+												name={item.icon as keyof typeof MaterialCommunityIcons.glyphMap}
+												size={item.iconSize ?? 20}
+												color={iconTint}
+											/>
+										)}
+									</View>
+								) : null}
+
+								<View style={styles.content}>
+									<BAIText variant={titleVariant} style={[styles.label, { color: labelColor }]}>
+										{item.label}
+									</BAIText>
+
+									<BAIText variant='caption' style={[styles.subtitle, { color: subtitleColor }]}>
+										{item.subtitle}
+									</BAIText>
 								</View>
-							) : null}
-
-							<View style={styles.content}>
-								<BAIText variant={titleVariant} style={{ color: labelColor }}>
-									{item.label}
-								</BAIText>
-
-								<BAIText variant='caption' style={[styles.subtitle, { color: subtitleColor }]}>
-									{item.subtitle}
-								</BAIText>
 							</View>
-						</View>
 
-						<MaterialCommunityIcons name='chevron-right' size={30} color={chevronColor} />
-					</Pressable>
+							<MaterialCommunityIcons name='chevron-right' size={24} color={chevronColor} />
+						</Pressable>
+						{!isLast ? <View style={[styles.separator, { backgroundColor: separatorColor }]} /> : null}
+					</View>
 				);
 			})}
 		</View>
@@ -94,18 +96,18 @@ export function AddMenuList({ items, disabled, titleVariant = "subtitle" }: AddM
 
 const styles = StyleSheet.create({
 	list: {
-		gap: 8, // ✅ visual separation between pressables
+		borderWidth: 1,
+		borderRadius: 22,
+		overflow: "hidden",
 	},
 	row: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-
-		// ✅ Per-row border (instead of dividers)
-		borderWidth: 1,
-		borderRadius: 16,
+		paddingLeft: 14,
+		paddingRight: 10,
+		paddingVertical: 12,
+		minHeight: 74,
 	},
 	rowLeft: {
 		flexDirection: "row",
@@ -126,11 +128,16 @@ const styles = StyleSheet.create({
 		flex: 1,
 		gap: 2,
 	},
+	label: {
+		fontWeight: "600",
+	},
 	subtitle: {
 		marginTop: 2,
+		lineHeight: 18,
 	},
-	pressed: {
-		opacity: 0.85,
+	separator: {
+		height: StyleSheet.hairlineWidth,
+		marginLeft: 64,
 	},
 	disabled: {
 		opacity: 0.45,

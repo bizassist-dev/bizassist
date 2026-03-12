@@ -768,6 +768,32 @@ Enforcement:
 
 - Unless explicitly overridden in the request, all UI tasks must interpret x/y padding terms using this mapping.
 
+## 0.12 Bottom Tab Bar Dock Geometry (Locked)
+
+Purpose:
+
+- This lock standardizes the floating bottom-tab-bar geometry so iterative visual tuning does not drift across screens or releases.
+
+Locked rules:
+
+- Bottom tab bar must remain a floating dock with a detached scan button.
+- Dock height is locked at `64`.
+- Scan button size must equal dock height and derive from the same source-of-truth value.
+- Dock container inset must remain equal on both axes and is locked at `3`.
+- Active indicator inset must remain equal on both axes and is locked at `2`.
+- Dock-to-scan gap is locked at `8`.
+- All four bottom-tab icons must use equal numeric size and are locked at `27`.
+- Dock and scan button must share the same border color treatment.
+- Dock, active indicator, and scan button borders must remain `StyleSheet.hairlineWidth`.
+- If a glass treatment is used, it must stay flat and non-reflective:
+  - no reflective top highlight layer;
+  - no reflective bottom shade layer;
+  - translucent fill and subtle inner stroke only.
+
+Enforcement:
+
+- Future bottom-tab-bar visual changes must preserve these baseline values unless memory and masterplan are updated together.
+
 ## 1. Non‑Negotiable Product Principles
 
 Quick index:
@@ -902,6 +928,19 @@ Rules:
    - prefer `ListEmptyComponent`, overlays, inline state containers, or inner child swaps over replacing the full screen surface
 5. This pattern should be applied when the initial transition flicker is caused by first-mount component replacement rather than navigation timing alone.
 6. This lock complements, but does not replace, **Flicker-Free Initial Screen Transition** governance.
+
+### 1.10.1 Top Header Avatar Placement Governance (Locked)
+
+1. Canonical pattern name is **Top Header Avatar Placement**.
+2. The user avatar in a top header is an app-level identity anchor and must be used selectively, not universally.
+3. Avatar placement rule:
+   - show avatar on workspace pages and list/index destination pages
+   - do not show avatar by default on process screens, picker screens, detail screens, scan flows, or confirmation flows
+4. Header-balance rule:
+   - do not add an avatar if it crowds task-critical header actions or causes visible title-centering drift
+   - action-plus-avatar clusters are allowed only when the screen remains visually balanced and the page is a destination/index surface
+5. Reusable header components may expose avatar-placeholder support, but callers must opt in deliberately.
+6. If a non-destination screen needs an avatar, that exception requires an explicit product reason rather than aesthetic preference alone.
 
 ### 1.11 POS Numeric Bottom Sheet Keyboard Governance (Locked)
 

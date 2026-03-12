@@ -10,6 +10,8 @@ import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
+import { useAuth } from "@/modules/auth/AuthContext";
+import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { useSalesTaxDraft, useSalesTaxesList } from "@/modules/taxes/taxes.queries";
 
 function TaxRow({
@@ -82,6 +84,7 @@ function TaxRow({
 export default function SalesTaxesIndexScreen() {
 	const router = useRouter();
 	const theme = useTheme();
+	const { user } = useAuth();
 	const tabBarHeight = useBottomTabBarHeight();
 	const listQuery = useSalesTaxesList({ includeArchived: true });
 	const { resetDraft } = useSalesTaxDraft();
@@ -96,6 +99,7 @@ export default function SalesTaxesIndexScreen() {
 		}),
 		[borderColor, surfaceAlt],
 	);
+	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 
 	const onBack = useCallback(() => {
 		if (router.canGoBack?.()) {
@@ -130,10 +134,36 @@ export default function SalesTaxesIndexScreen() {
 					title='Sales taxes'
 					variant='back'
 					onLeftPress={onBack}
-					onRightPress={onCreate}
+					rightRailWidth={118}
 					rightSlot={({ disabled }) => (
-						<View style={[styles.addCircle, { backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 }]}>
-							<MaterialCommunityIcons name='plus' size={30} color={theme.colors.onPrimary} />
+						<View style={styles.headerActions}>
+							<Pressable
+								onPress={onCreate}
+								disabled={disabled}
+								accessibilityRole='button'
+								accessibilityLabel='Create sales tax'
+								hitSlop={8}
+								style={({ pressed }) => [
+									styles.addCircle,
+									{ backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 },
+									pressed && !disabled ? styles.headerActionPressed : null,
+								]}
+							>
+								<MaterialCommunityIcons name='plus' size={30} color={theme.colors.onPrimary} />
+							</Pressable>
+							<View
+								style={[
+									styles.headerAvatar,
+									{
+										borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
+										backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+									},
+								]}
+							>
+								<BAIText variant='subtitle' style={styles.headerAvatarText}>
+									{userAvatarInitials}
+								</BAIText>
+							</View>
 						</View>
 					)}
 				/>
@@ -187,10 +217,30 @@ const styles = StyleSheet.create({
 		paddingTop: 0,
 		gap: 12,
 	},
+	headerActions: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 10,
+	},
+	headerActionPressed: {
+		opacity: 0.78,
+	},
+	headerAvatar: {
+		width: 50,
+		height: 50,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	headerAvatarText: {
+		fontWeight: "700",
+		letterSpacing: 0.2,
+	},
 	addCircle: {
-		width: 44,
-		height: 44,
-		borderRadius: 22,
+		width: 50,
+		height: 50,
+		borderRadius: 25,
 		alignItems: "center",
 		justifyContent: "center",
 	},
