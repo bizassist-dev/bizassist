@@ -18,6 +18,22 @@ export interface AuthPayload {
 	tokens: AuthTokens;
 }
 
+export interface AuthDeviceSession {
+	deviceId: string;
+	deviceName: string | null;
+	lastSeenAt: string;
+	firstIssuedAt: string;
+	expiresAt: string;
+	sessionCount: number;
+	isCurrent: boolean;
+}
+
+export interface AuthDeviceSessionsPayload {
+	maxDevices: number;
+	activeDeviceCount: number;
+	devices: AuthDeviceSession[];
+}
+
 export interface ApiEnvelope<T> {
 	success: boolean;
 	data: T;

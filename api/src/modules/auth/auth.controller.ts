@@ -5,7 +5,9 @@ import asyncHandler from "express-async-handler";
 import { StatusCodes } from "http-status-codes";
 import { AuditStatus } from "@prisma/client";
 
+import { env } from "@/core/config/env";
 import { prisma } from "@/lib/prisma";
+import { disconnectRealtimeConnectionsForDevice } from "@/modules/realtime/realtime.server";
 
 import {
 	registerUser,
@@ -15,6 +17,8 @@ import {
 	refreshTokens,
 	logoutUser,
 	logoutAllSessions,
+	listDeviceSessions,
+	revokeDeviceSessions,
 	forgotPassword,
 	verifyPasswordResetOtp,
 	resetPassword,
@@ -38,6 +42,9 @@ import type { RefreshBody, LogoutBody, LogoutAllBody } from "@/modules/auth/auth
 const getRequestContext = (req: Request): RequestContext => ({
 	ip: req.ip ?? null,
 	userAgent: req.get("user-agent") ?? null,
+	deviceId: (req.get("x-device-id") ?? "").trim() || null,
+	deviceName: (req.get("x-device-name") ?? "").trim() || null,
+	appClient: (req.get("x-app-client") ?? "").trim() || null,
 	correlationId: (req as any).correlationId ?? null,
 });
 
@@ -277,7 +284,7 @@ export const handleMe = asyncHandler(async (req: Request, res: Response): Promis
 
 export const handleRefresh = asyncHandler(async (req: Request, res: Response): Promise<void> => {
 	const payload = req.body as RefreshBody;
-	const result = await refreshTokens(payload.refreshToken);
+	const result = await refreshTokens(payload.refreshToken, getRequestContext(req));
 
 	res.status(StatusCodes.OK).json({ success: true, data: result });
 });
@@ -365,6 +372,39 @@ export const handleLogoutAll = asyncHandler(async (req: Request, res: Response):
 		});
 		throw err;
 	}
+});
+
+// ============================================================
+// DEVICE SESSIONS
+// ============================================================
+
+export const handleListDevices = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+	if (!req.user) {
+		res.status(StatusCodes.UNAUTHORIZED).json({ success: false, message: "Unauthorized" });
+		return;
+	}
+
+	const devices = await listDeviceSessions(req.user.id, getRequestContext(req));
+	res.status(StatusCodes.OK).json({
+		success: true,
+		data: {
+			maxDevices: env.authMaxDevicesPerUser,
+			activeDeviceCount: devices.length,
+			devices,
+		},
+	});
+});
+
+export const handleRevokeDevice = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+	if (!req.user) {
+		res.status(StatusCodes.UNAUTHORIZED).json({ success: false, message: "Unauthorized" });
+		return;
+	}
+
+	const deviceId = String(req.params.deviceId ?? "").trim();
+	const result = await revokeDeviceSessions(req.user.id, deviceId, getRequestContext(req));
+	disconnectRealtimeConnectionsForDevice(req.user.id, deviceId);
+	res.status(StatusCodes.OK).json({ success: true, data: result });
 });
 
 // ============================================================

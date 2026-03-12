@@ -1,18 +1,48 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { StyleSheet, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { useTheme } from "react-native-paper";
 import { BAIText } from "@/components/ui/BAIText";
+import { baiColors } from "@/theme/baiColors";
 
 export function BAIHeaderActionButton({
 	label,
 	disabled = false,
 	variant = "text",
+	icon,
+	style,
+	labelStyle,
 }: {
-	label: string;
+	label?: string;
 	disabled?: boolean;
-	variant?: "text" | "solid-primary";
+	variant?: "text" | "solid-primary" | "icon-primary";
+	icon?: React.ComponentProps<typeof MaterialCommunityIcons>["name"];
+	style?: StyleProp<ViewStyle>;
+	labelStyle?: StyleProp<TextStyle>;
 }) {
 	const theme = useTheme();
+	const resolvedLabel = label ?? "";
+	const primaryActionColor = baiColors.blue[500];
+
+	if (variant === "icon-primary") {
+		return (
+			<View
+				style={[
+					styles.iconWrap,
+					{
+						backgroundColor: disabled ? theme.colors.surfaceDisabled : primaryActionColor,
+					},
+					style,
+				]}
+			>
+				<MaterialCommunityIcons
+					name={icon ?? "plus"}
+					size={26}
+					color={disabled ? theme.colors.onSurfaceDisabled : theme.colors.onPrimary}
+				/>
+			</View>
+		);
+	}
 
 	if (variant === "solid-primary") {
 		return (
@@ -20,15 +50,20 @@ export function BAIHeaderActionButton({
 				style={[
 					styles.solidWrap,
 					{
-						backgroundColor: disabled ? theme.colors.surfaceDisabled : theme.colors.primary,
+						backgroundColor: disabled ? theme.colors.surfaceDisabled : primaryActionColor,
 					},
+					style,
 				]}
 			>
 				<BAIText
 					variant='subtitle'
-					style={[styles.label, { color: disabled ? theme.colors.onSurfaceDisabled : theme.colors.onPrimary }]}
+					style={[
+						styles.label,
+						{ color: disabled ? theme.colors.onSurfaceDisabled : theme.colors.onPrimary },
+						labelStyle,
+					]}
 				>
-					{label}
+					{resolvedLabel}
 				</BAIText>
 			</View>
 		);
@@ -37,21 +72,29 @@ export function BAIHeaderActionButton({
 	return (
 		<BAIText
 			variant='subtitle'
-			style={[styles.label, { color: disabled ? theme.colors.onSurfaceDisabled : theme.colors.primary }]}
+			style={[styles.label, { color: disabled ? theme.colors.onSurfaceDisabled : primaryActionColor }, labelStyle]}
 		>
-			{label}
+			{resolvedLabel}
 		</BAIText>
 	);
 }
 
 const styles = StyleSheet.create({
 	label: {
-		fontWeight: "700",
+		fontWeight: "500",
 	},
 	solidWrap: {
-		minHeight: 34,
-		paddingHorizontal: 12,
-		borderRadius: 17,
+		minWidth: 96,
+		minHeight: 38,
+		paddingHorizontal: 18,
+		borderRadius: 19,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	iconWrap: {
+		width: 44,
+		height: 44,
+		borderRadius: 22,
 		alignItems: "center",
 		justifyContent: "center",
 	},

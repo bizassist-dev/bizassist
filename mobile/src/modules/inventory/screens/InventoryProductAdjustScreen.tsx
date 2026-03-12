@@ -38,6 +38,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FontAwesome6 } from "@expo/vector-icons";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
@@ -49,6 +50,7 @@ import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { makeIdempotencyKey } from "@/modules/inventory/inventory.utils";
 import { toInventoryDomainError, mapInventoryErrorToMessage } from "@/modules/inventory/inventory.errors";
+import { invalidateInventoryAfterMutation } from "@/modules/inventory/inventory.invalidate";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { formatOnHand } from "@/modules/inventory/inventory.selectors";
 import { runGovernedProcessExit } from "@/modules/inventory/navigation.governance";
@@ -59,6 +61,7 @@ import {
 } from "@/modules/inventory/navigation.scope";
 import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 import { useProcessExitGuard } from "@/modules/navigation/useProcessExitGuard";
+import { patchPosCatalogOnHandCaches } from "@/modules/pos/pos.catalog.cache";
 import { unitDisplayToken } from "@/modules/units/units.format";
 import { categoriesApi } from "@/modules/categories/categories.api";
 import { categoryKeys } from "@/modules/categories/categories.queries";
@@ -611,7 +614,7 @@ export default function InventoryProductAdjustScreen({
 		if (!canCheckStock) return false;
 		if (deltaScaled === 0n) return false;
 		if (deltaScaled >= 0n) return false;
-		if (!onHandScaledForCompare) return false;
+		if (onHandScaledForCompare == null) return false;
 		return -deltaScaled > onHandScaledForCompare;
 	}, [canCheckStock, deltaScaled, onHandScaledForCompare]);
 
@@ -656,6 +659,15 @@ export default function InventoryProductAdjustScreen({
 					idempotencyKey: makeIdempotencyKey("inv_adj"),
 				});
 
+				if (onHandScaledForCompare != null) {
+					patchPosCatalogOnHandCaches(qc, {
+						productId,
+						onHandCached: formatScaledBigInt(onHandScaledForCompare + delta, unitPrecision),
+						updatedAt: new Date().toISOString(),
+					});
+				}
+				invalidateInventoryAfterMutation(qc, { productId });
+
 				await Promise.all([
 					qc.invalidateQueries({ queryKey: inventoryKeys.all }),
 					qc.invalidateQueries({ queryKey: inventoryKeys.productDetail(productId) }),
@@ -673,8 +685,7 @@ export default function InventoryProductAdjustScreen({
 
 	const title = product?.name?.trim() ? product.name : "Item";
 	const imageUri = useMemo(() => {
-		const raw = (product as any)?.primaryImageUrl;
-		return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+		return toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt);
 	}, [product]);
 	const hasImage = Boolean(imageUri);
 	const selectedReasonLabel = getReasonLabel(reason);

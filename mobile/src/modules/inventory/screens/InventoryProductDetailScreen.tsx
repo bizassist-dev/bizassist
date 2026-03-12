@@ -28,6 +28,7 @@ import { InventoryMovementRow } from "@/modules/inventory/components/InventoryMo
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { useProductCreateDraft } from "@/modules/inventory/drafts/useProductCreateDraft";
+import { LOCAL_URI_KEY } from "@/modules/inventory/posTile.contract";
 import {
 	inventoryScopeRoot,
 	mapInventoryRouteToScope,
@@ -37,6 +38,7 @@ import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { formatOnHand } from "@/modules/inventory/inventory.selectors";
 import type { InventoryMovement, InventoryProductDetail } from "@/modules/inventory/inventory.types";
 import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { unitsApi } from "@/modules/units/units.api";
 import { unitDisplayToken } from "@/modules/units/units.format";
 import { unitKeys } from "@/modules/units/units.queries";
@@ -48,6 +50,7 @@ import {
 	RETURN_TO_KEY as OPTION_RETURN_TO_KEY,
 } from "@/modules/options/productOptionPicker.contract";
 import { useNavLock } from "@/shared/hooks/useNavLock";
+import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 import { sanitizeLabelInput, sanitizeProductNameInput } from "@/shared/validation/sanitize";
 
 function extractApiErrorMessage(err: any): string {
@@ -401,18 +404,23 @@ export default function InventoryProductDetailScreen({
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 	const rootRoute = useMemo(() => inventoryScopeRoot(routeScope), [routeScope]);
 	const { currencyCode } = useActiveBusinessMeta();
+	const operationalRefreshInterval = useOperationalQueryAutoRefresh();
 
-	const params = useLocalSearchParams<{ id: string }>();
+	const params = useLocalSearchParams<{ id: string; localUri?: string }>();
 	const productId = useMemo(() => String(params.id ?? "").trim(), [params.id]);
+	const incomingLocalImageUri = useMemo(() => String(params[LOCAL_URI_KEY] ?? "").trim(), [params]);
 	const optionsDraftId = useMemo(() => (productId ? `item_edit_${productId}` : ""), [productId]);
 	const { patch: patchOptionsDraft } = useProductCreateDraft(optionsDraftId || undefined);
 	const enabled = !!productId;
+	const [optimisticImageUri, setOptimisticImageUri] = useState("");
 
 	const productDetailQuery = useQuery<InventoryProductDetail>({
 		queryKey: inventoryKeys.productDetail(productId),
 		queryFn: () => inventoryApi.getProductDetail(productId),
 		enabled,
 		staleTime: 30_000,
+		refetchInterval: enabled ? operationalRefreshInterval : false,
+		refetchIntervalInBackground: false,
 	});
 
 	const movementsQuery = useQuery<{ items: InventoryMovement[] }>({
@@ -423,6 +431,7 @@ export default function InventoryProductDetailScreen({
 		},
 		enabled,
 		staleTime: 30_000,
+		refetchInterval: enabled ? operationalRefreshInterval : false,
 		refetchOnMount: "always",
 		refetchOnReconnect: "always",
 		refetchOnWindowFocus: "always",
@@ -549,10 +558,16 @@ export default function InventoryProductDetailScreen({
 		return { backgroundColor: fill, borderColor: stroke };
 	}, [borderColor, categoryColor]);
 
-	const imageUri = useMemo(() => {
-		const raw = typeof (product as any)?.primaryImageUrl === "string" ? (product as any).primaryImageUrl.trim() : "";
-		return raw;
-	}, [product]);
+	const imageUri = useMemo(
+		() => optimisticImageUri || toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt),
+		[optimisticImageUri, product],
+	);
+
+	useEffect(() => {
+		if (!incomingLocalImageUri) return;
+		setOptimisticImageUri(incomingLocalImageUri);
+		(router as any).setParams?.({ [LOCAL_URI_KEY]: undefined });
+	}, [incomingLocalImageUri, router]);
 
 	// Spinner/processing indication for RN Image
 	const [isImageLoading, setIsImageLoading] = useState(false);

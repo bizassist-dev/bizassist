@@ -14,7 +14,9 @@ export type BAIHeaderProps = {
 	variant: "back" | "exit";
 	rightSlot?: ReactNode | ((options: { disabled: boolean }) => ReactNode);
 	barHeight?: number;
+	rightRailWidth?: number;
 	titleHorizontalPadding?: number;
+	titleOffsetX?: number;
 	onLeftPress?: () => void;
 	onRightPress?: () => void;
 	disabled?: boolean;
@@ -32,7 +34,9 @@ export function BAIHeader({
 	variant,
 	rightSlot,
 	barHeight = HEADER_BAR_HEIGHT,
+	rightRailWidth,
 	titleHorizontalPadding = 0,
+	titleOffsetX = 0,
 	onLeftPress,
 	onRightPress,
 	disabled = false,
@@ -93,6 +97,8 @@ export function BAIHeader({
 
 	const resolvedBarHeight = Math.max(56, barHeight || HEADER_BAR_HEIGHT);
 	const railSize = Math.max(HEADER_ACTION_WIDTH_XXL, resolvedBarHeight);
+	const resolvedRightRailWidth = Math.max(HEADER_ACTION_WIDTH_XXL, rightRailWidth ?? railSize);
+	const resolvedTitleOffsetX = (resolvedRightRailWidth - railSize) / 2 + titleOffsetX;
 	const horizontalInset = Math.max(8, (paddingX || 16) - 4);
 
 	return (
@@ -113,18 +119,26 @@ export function BAIHeader({
 				<View
 					style={[styles.centerRail, titleHorizontalPadding > 0 ? { paddingHorizontal: titleHorizontalPadding } : null]}
 				>
-					<BAIText variant='title' numberOfLines={1} ellipsizeMode='tail' style={styles.title}>
+					<BAIText
+						variant='title'
+						numberOfLines={1}
+						ellipsizeMode='tail'
+						style={[
+							styles.title,
+							resolvedTitleOffsetX !== 0 ? { transform: [{ translateX: resolvedTitleOffsetX }] } : null,
+						]}
+					>
 						{title}
 					</BAIText>
 				</View>
 
-				<View style={[styles.rightRail, { width: railSize }]}>
+				<View style={[styles.rightRail, { width: resolvedRightRailWidth }]}>
 					{onRightPress ? (
 						<Pressable
 							onPress={handleRightPress}
 							disabled={rightActionDisabled}
 							hitSlop={8}
-							style={({ pressed }) => [styles.rightPressable, pressed && styles.rightPressed]}
+							style={({ pressed }) => [styles.rightPressable, { width: resolvedRightRailWidth }, pressed && styles.rightPressed]}
 						>
 							{renderedRightSlot}
 						</Pressable>

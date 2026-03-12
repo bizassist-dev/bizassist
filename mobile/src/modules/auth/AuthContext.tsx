@@ -63,7 +63,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 		try {
 			await refreshSessionSingleFlight();
 		} catch {
-			invalidateAuthSession("bootstrap_failed");
+			if (getAuthTokens().refreshToken === refreshToken) {
+				invalidateAuthSession("bootstrap_failed");
+			}
 		}
 	}, []);
 

@@ -15,6 +15,7 @@ export default function AppTabsLayout() {
 			initialRouteName='pos'
 			screenOptions={{
 				headerShown: false,
+				popToTopOnBlur: true,
 			}}
 			tabBar={(props) => <BAIBottomTabBar {...props} />}
 		>

@@ -5,6 +5,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
+import { baiColors } from "@/theme/baiColors";
 
 export const NUMERIC_BOTTOM_SHEET_KEYS = [
 	"1",
@@ -49,6 +50,7 @@ export function BAINumericBottomSheetKeyboard({
 	keyBackgroundColor,
 }: BAINumericBottomSheetKeyboardProps) {
 	const theme = useTheme();
+	const confirmButtonColor = baiColors.blue[500];
 	const translateY = useRef(new Animated.Value(320)).current;
 	const closeTokenRef = useRef(0);
 	const systemKeyboardDismissedRef = useRef(false);
@@ -208,7 +210,7 @@ export function BAINumericBottomSheetKeyboard({
 							onPress={onDismiss}
 							style={({ pressed }) => [
 								styles.doneButton,
-								{ backgroundColor: theme.colors.primary },
+								{ backgroundColor: confirmButtonColor },
 								pressed ? styles.pressed : null,
 							]}
 						>

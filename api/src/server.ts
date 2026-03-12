@@ -5,6 +5,8 @@ import type { Server } from "http";
 import { app } from "@/app";
 import { env } from "@/core/config/env";
 import { prisma } from "@/lib/prisma";
+import { startRealtimePostgresBridge, stopRealtimePostgresBridge } from "@/modules/realtime/realtime.postgres";
+import { attachRealtimeServer } from "@/modules/realtime/realtime.server";
 
 const PORT = env.port;
 
@@ -77,6 +79,15 @@ async function shutdown(signal: string, err?: unknown) {
 	}
 
 	try {
+		await stopRealtimePostgresBridge();
+		// eslint-disable-next-line no-console
+		console.log(`${color.green}Realtime bridge stopped cleanly.${color.reset}`);
+	} catch (realtimeErr) {
+		// eslint-disable-next-line no-console
+		console.error(`${color.red}Error during realtime bridge shutdown:${color.reset}`, realtimeErr);
+	}
+
+	try {
 		await prisma.$disconnect();
 		// eslint-disable-next-line no-console
 		console.log(`${color.green}Prisma disconnected cleanly.${color.reset}`);
@@ -91,6 +102,8 @@ async function shutdown(signal: string, err?: unknown) {
 
 // IMPORTANT: bind to 0.0.0.0 so Render (and devices) can reach it
 server = app.listen(PORT, "0.0.0.0", printServerBanner);
+attachRealtimeServer(server);
+startRealtimePostgresBridge();
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));

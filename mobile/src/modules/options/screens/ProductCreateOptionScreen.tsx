@@ -316,8 +316,9 @@ export function ProductCreateOptionScreen({ routeScope = "inventory" }: { routeS
 						variant='exit'
 						onLeftPress={onBack}
 						onRightPress={onCreate}
+						rightRailWidth={96}
 						rightDisabled={!canCreate}
-						rightSlot={({ disabled }) => <BAIHeaderActionButton label='Create' disabled={disabled} />}
+						rightSlot={({ disabled }) => <BAIHeaderActionButton label='Create' variant='solid-primary' disabled={disabled} />}
 					/>
 					<BAISurface
 						bordered

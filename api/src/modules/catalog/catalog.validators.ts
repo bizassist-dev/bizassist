@@ -84,6 +84,7 @@ const serviceDurationMinutesSchema = z.coerce
 
 type ServiceValidationInput = {
 	type?: ProductType;
+	unitId?: string | null;
 	trackInventory?: boolean;
 	reorderPoint?: string | null;
 	initialOnHand?: string | null;
@@ -132,6 +133,13 @@ function validateServiceDurationRules(
 	}
 
 	if (options.isCreate) {
+		if (val.unitId == null) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["unitId"],
+				message: "unitId is required for services.",
+			});
+		}
 		if (val.durationInitialMinutes == null) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,

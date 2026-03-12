@@ -66,6 +66,10 @@ Optional utility:
 
 - Do not change scanner layout structure outside dynamic section rendering.
 - Dynamic section is hidden for contextual flow and visible only for universal flow post-capture.
+- Dynamic section suppression scope must be barcode-identifier aware:
+  - Suppress only when launch context has an immediate barcode consumer (for example item barcode search/create/edit or POS barcode search).
+  - Do not suppress for generic/non-barcode search screens (for example modifiers, categories, taxes, units, services).
+  - In Inventory, if the search context does not use barcode as identifier, dynamic section remains enabled.
 - Maintain route wrappers:
   - Inventory: `/(app)/(tabs)/inventory/scan`
   - POS: `/(app)/(tabs)/pos/scan`

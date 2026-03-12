@@ -7,7 +7,9 @@ import { StatusCodes } from "http-status-codes";
 
 import { verifyAccessToken, type VerifiedJwtPayload } from "@/core/security/jwt";
 import { AppError } from "@/core/errors/AppError";
+import { env } from "@/core/config/env";
 import { prisma } from "@/lib/prisma";
+import { hasActiveRefreshTokenForDevice } from "@/modules/auth/auth.repository";
 
 type AuthedRequest = Request & {
 	user?: {
@@ -37,6 +39,15 @@ function extractBearerToken(req: Request): string {
 function readActiveBusinessId(req: Request): string | null {
 	const id = (req.get("x-active-business-id") ?? "").trim();
 	return id ? id : null;
+}
+
+function readDeviceId(req: Request): string | null {
+	const id = (req.get("x-device-id") ?? "").trim();
+	return id ? id : null;
+}
+
+function shouldRelaxDeviceBinding(req: Request): boolean {
+	return env.nodeEnv === "development" && (req.get("x-app-client") ?? "").trim() === "expo-go";
 }
 
 export const authMiddleware = asyncHandler(async (req: AuthedRequest, _res: Response, next: NextFunction) => {
@@ -69,6 +80,14 @@ export const authMiddleware = asyncHandler(async (req: AuthedRequest, _res: Resp
 
 	if (typeof payload.tokenVersion === "number" && payload.tokenVersion !== user.tokenVersion) {
 		throw new AppError(StatusCodes.UNAUTHORIZED, "ACCESS_TOKEN_REVOKED", "Access token is no longer valid.");
+	}
+
+	const requestDeviceId = readDeviceId(req);
+	if (!shouldRelaxDeviceBinding(req) && payload.deviceId && requestDeviceId !== payload.deviceId) {
+		throw new AppError(StatusCodes.UNAUTHORIZED, "Device mismatch for access token", "ACCESS_TOKEN_DEVICE_MISMATCH");
+	}
+	if (!shouldRelaxDeviceBinding(req) && payload.deviceId && !(await hasActiveRefreshTokenForDevice(user.id, payload.deviceId))) {
+		throw new AppError(StatusCodes.UNAUTHORIZED, "Device session has been revoked", "ACCESS_TOKEN_DEVICE_REVOKED");
 	}
 
 	const activeBusinessId = readActiveBusinessId(req);

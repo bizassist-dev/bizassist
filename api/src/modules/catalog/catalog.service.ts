@@ -283,6 +283,75 @@ function normalizeServiceDurationForUpdate(snapshot: {
 	return normalizeServiceDurationForCreate(snapshot);
 }
 
+type ServiceCreateState = {
+	unitId: string;
+	duration: ServiceDurationSnapshot;
+};
+
+type ExistingServiceState = {
+	unitId: string | null;
+	processingEnabled: boolean;
+	durationInitialMinutes: number | null;
+	durationProcessingMinutes: number | null;
+	durationFinalMinutes: number | null;
+};
+
+async function resolveServiceCreateState(
+	businessId: string,
+	input: Pick<
+		CreateProductInput,
+		| "unitId"
+		| "processingEnabled"
+		| "durationInitialMinutes"
+		| "durationProcessingMinutes"
+		| "durationFinalMinutes"
+	>,
+): Promise<ServiceCreateState> {
+	return {
+		unitId: await resolveServiceTimeUnitId(businessId, input.unitId ?? null),
+		duration: normalizeServiceDurationForCreate({
+			processingEnabled: input.processingEnabled === true,
+			durationInitialMinutes: input.durationInitialMinutes ?? null,
+			durationProcessingMinutes: input.durationProcessingMinutes ?? null,
+			durationFinalMinutes: input.durationFinalMinutes ?? null,
+		}),
+	};
+}
+
+async function resolveServiceUpdateState(
+	businessId: string,
+	input: Pick<
+		UpdateProductInput,
+		| "unitId"
+		| "processingEnabled"
+		| "durationInitialMinutes"
+		| "durationProcessingMinutes"
+		| "durationFinalMinutes"
+	>,
+	existing: ExistingServiceState,
+): Promise<ServiceCreateState> {
+	return {
+		unitId: await resolveServiceTimeUnitId(
+			businessId,
+			input.unitId !== undefined ? input.unitId : existing.unitId,
+		),
+		duration: normalizeServiceDurationForUpdate({
+			processingEnabled:
+				input.processingEnabled !== undefined ? input.processingEnabled === true : existing.processingEnabled,
+			durationInitialMinutes:
+				input.durationInitialMinutes !== undefined
+					? input.durationInitialMinutes
+					: existing.durationInitialMinutes,
+			durationProcessingMinutes:
+				input.durationProcessingMinutes !== undefined
+					? input.durationProcessingMinutes
+					: existing.durationProcessingMinutes,
+			durationFinalMinutes:
+				input.durationFinalMinutes !== undefined ? input.durationFinalMinutes : existing.durationFinalMinutes,
+		}),
+	};
+}
+
 function maybeLogCatalogUsageWarning(args: { businessId: string; count: number }) {
 	const warningThreshold = Math.ceil(MAX_PRODUCTS_PER_BUSINESS * CATALOG_USAGE_WARNING_THRESHOLD);
 	if (args.count < warningThreshold) return;
@@ -831,7 +900,12 @@ export class CatalogService {
 		const type = (input.type as ProductType | undefined) ?? ProductType.PHYSICAL;
 		const normalizedSku = normalizeSkuInput(input.sku);
 		const normalizedBarcode = input.barcode ?? null;
-		let serviceDuration: ServiceDurationSnapshot | null = null;
+		const serviceState =
+			type === ProductType.SERVICE ? await resolveServiceCreateState(businessId, input) : null;
+		const effectiveUnitId = serviceState?.unitId ?? input.unitId ?? null;
+		const effectiveTrackInventory = serviceState ? false : (input.trackInventory ?? true);
+		const effectiveReorderPointInput = serviceState ? null : input.reorderPoint;
+		const effectiveInitialOnHandInput = serviceState ? null : input.initialOnHand;
 		const priceMinor = parseMoneyMinorInput({
 			fieldLabel: "price",
 			minorInput: input.priceMinor,
@@ -843,50 +917,31 @@ export class CatalogService {
 			legacyInput: input.cost,
 		});
 
-		if (type === ProductType.SERVICE) {
-			serviceDuration = normalizeServiceDurationForCreate({
-				processingEnabled: input.processingEnabled === true,
-				durationInitialMinutes: input.durationInitialMinutes ?? null,
-				durationProcessingMinutes: input.durationProcessingMinutes ?? null,
-				durationFinalMinutes: input.durationFinalMinutes ?? null,
-			});
-		}
-
-		// Services (v1): supported (non-stock).
-		if (type === ProductType.SERVICE) {
-			input.unitId = await resolveServiceTimeUnitId(businessId, input.unitId ?? null);
-
-			// Services are never stock-tracked.
-			input.trackInventory = false;
-			input.reorderPoint = null;
-			input.initialOnHand = null;
-		}
-
 		// UDQI: enforce unit-driven precision scale for any quantity inputs.
-		const unitPrecisionScale = await resolveUnitPrecisionScale(businessId, input.unitId ?? null);
+		const unitPrecisionScale = await resolveUnitPrecisionScale(businessId, effectiveUnitId);
 
-		const reorderPointRaw = normalizeDecimalStringOrNull(input.reorderPoint);
-		if (input.reorderPoint != null && reorderPointRaw == null) {
+		const reorderPointRaw = normalizeDecimalStringOrNull(effectiveReorderPointInput);
+		if (effectiveReorderPointInput != null && reorderPointRaw == null) {
 			throw new AppError(
 				StatusCodes.BAD_REQUEST,
 				"INVALID_REORDER_POINT",
 				"reorderPoint must be a valid decimal string.",
 			);
 		}
-		if (input.reorderPoint != null) {
-			enforcePrecisionScale(input.reorderPoint.trim(), unitPrecisionScale, "Reorder point");
+		if (effectiveReorderPointInput != null) {
+			enforcePrecisionScale(effectiveReorderPointInput.trim(), unitPrecisionScale, "Reorder point");
 		}
 
-		const initialOnHandRaw = normalizeDecimalStringOrNull(input.initialOnHand);
-		if (input.initialOnHand != null && initialOnHandRaw == null) {
+		const initialOnHandRaw = normalizeDecimalStringOrNull(effectiveInitialOnHandInput);
+		if (effectiveInitialOnHandInput != null && initialOnHandRaw == null) {
 			throw new AppError(
 				StatusCodes.BAD_REQUEST,
 				"INVALID_INITIAL_ON_HAND",
 				"initialOnHand must be a valid decimal string.",
 			);
 		}
-		if (input.initialOnHand != null) {
-			enforcePrecisionScale(input.initialOnHand.trim(), unitPrecisionScale, "Initial on hand");
+		if (effectiveInitialOnHandInput != null) {
+			enforcePrecisionScale(effectiveInitialOnHandInput.trim(), unitPrecisionScale, "Initial on hand");
 		}
 
 		const productBase: Omit<Prisma.ProductUncheckedCreateInput, "sku"> = {
@@ -898,7 +953,7 @@ export class CatalogService {
 			name: input.name.trim(),
 			barcode: normalizedBarcode,
 
-			unitId: input.unitId ?? null,
+			unitId: effectiveUnitId,
 
 			categoryId: input.categoryId ?? null,
 			categoryLegacy: input.categoryLegacy ?? null,
@@ -909,13 +964,13 @@ export class CatalogService {
 			price: priceMinor == null ? null : new Prisma.Decimal(minorUnitsToDecimalString(priceMinor)),
 			cost: costMinor == null ? null : new Prisma.Decimal(minorUnitsToDecimalString(costMinor)),
 
-			trackInventory: type === ProductType.SERVICE ? false : (input.trackInventory ?? true),
-			durationTotalMinutes: type === ProductType.SERVICE ? serviceDuration?.durationTotalMinutes : null,
-			serviceDurationMins: type === ProductType.SERVICE ? serviceDuration?.serviceDurationMins : null,
-			processingEnabled: type === ProductType.SERVICE ? (serviceDuration?.processingEnabled ?? false) : false,
-			durationInitialMinutes: type === ProductType.SERVICE ? serviceDuration?.durationInitialMinutes : null,
-			durationProcessingMinutes: type === ProductType.SERVICE ? serviceDuration?.durationProcessingMinutes : null,
-			durationFinalMinutes: type === ProductType.SERVICE ? serviceDuration?.durationFinalMinutes : null,
+			trackInventory: effectiveTrackInventory,
+			durationTotalMinutes: serviceState?.duration.durationTotalMinutes ?? null,
+			serviceDurationMins: serviceState?.duration.serviceDurationMins ?? null,
+			processingEnabled: serviceState?.duration.processingEnabled ?? false,
+			durationInitialMinutes: serviceState?.duration.durationInitialMinutes ?? null,
+			durationProcessingMinutes: serviceState?.duration.durationProcessingMinutes ?? null,
+			durationFinalMinutes: serviceState?.duration.durationFinalMinutes ?? null,
 
 			// UDQI: persist Decimal
 			reorderPoint: reorderPointRaw == null ? null : new Prisma.Decimal(reorderPointRaw),
@@ -1027,8 +1082,7 @@ export class CatalogService {
 
 		let reorderPointRaw: string | null | undefined =
 			input.reorderPoint === undefined ? undefined : normalizeDecimalStringOrNull(input.reorderPoint);
-		let serviceUnitId: string | null = null;
-		let serviceDuration: ServiceDurationSnapshot | null = null;
+		let serviceState: ServiceCreateState | null = null;
 		const existingType = existing.type as ProductType;
 		const nextPriceMinor =
 			input.priceMinor !== undefined || input.price !== undefined
@@ -1056,27 +1110,12 @@ export class CatalogService {
 				throw AppError.badRequest("reorderPoint is not applicable to services.", "INVALID_REORDER_POINT");
 			}
 
-			serviceUnitId = await resolveServiceTimeUnitId(
-				businessId,
-				input.unitId !== undefined ? input.unitId : existing.unitId,
-			);
-			serviceDuration = normalizeServiceDurationForUpdate({
-				processingEnabled:
-					input.processingEnabled !== undefined
-						? input.processingEnabled === true
-						: Boolean(existing.processingEnabled),
-				durationInitialMinutes:
-					input.durationInitialMinutes !== undefined
-						? input.durationInitialMinutes
-						: (existing.durationInitialMinutes ?? null),
-				durationProcessingMinutes:
-					input.durationProcessingMinutes !== undefined
-						? input.durationProcessingMinutes
-						: (existing.durationProcessingMinutes ?? null),
-				durationFinalMinutes:
-					input.durationFinalMinutes !== undefined
-						? input.durationFinalMinutes
-						: (existing.durationFinalMinutes ?? null),
+			serviceState = await resolveServiceUpdateState(businessId, input, {
+				unitId: existing.unitId ?? null,
+				processingEnabled: Boolean(existing.processingEnabled),
+				durationInitialMinutes: existing.durationInitialMinutes ?? null,
+				durationProcessingMinutes: existing.durationProcessingMinutes ?? null,
+				durationFinalMinutes: existing.durationFinalMinutes ?? null,
 			});
 
 			reorderPointRaw = null;
@@ -1107,7 +1146,11 @@ export class CatalogService {
 			barcode: input.barcode !== undefined ? input.barcode : undefined,
 
 			unitId:
-				existingType === ProductType.SERVICE ? serviceUnitId : input.unitId !== undefined ? input.unitId : undefined,
+				existingType === ProductType.SERVICE
+					? serviceState?.unitId
+					: input.unitId !== undefined
+						? input.unitId
+						: undefined,
 
 			categoryId: input.categoryId !== undefined ? input.categoryId : undefined,
 			categoryLegacy: input.categoryLegacy !== undefined ? input.categoryLegacy : undefined,
@@ -1134,15 +1177,16 @@ export class CatalogService {
 					: input.trackInventory !== undefined
 						? input.trackInventory
 						: undefined,
-			durationTotalMinutes: existingType === ProductType.SERVICE ? serviceDuration?.durationTotalMinutes : undefined,
-			serviceDurationMins: existingType === ProductType.SERVICE ? serviceDuration?.serviceDurationMins : undefined,
+			durationTotalMinutes: existingType === ProductType.SERVICE ? serviceState?.duration.durationTotalMinutes : undefined,
+			serviceDurationMins: existingType === ProductType.SERVICE ? serviceState?.duration.serviceDurationMins : undefined,
 			processingEnabled:
-				existingType === ProductType.SERVICE ? (serviceDuration?.processingEnabled ?? false) : undefined,
+				existingType === ProductType.SERVICE ? (serviceState?.duration.processingEnabled ?? false) : undefined,
 			durationInitialMinutes:
-				existingType === ProductType.SERVICE ? serviceDuration?.durationInitialMinutes : undefined,
+				existingType === ProductType.SERVICE ? serviceState?.duration.durationInitialMinutes : undefined,
 			durationProcessingMinutes:
-				existingType === ProductType.SERVICE ? serviceDuration?.durationProcessingMinutes : undefined,
-			durationFinalMinutes: existingType === ProductType.SERVICE ? serviceDuration?.durationFinalMinutes : undefined,
+				existingType === ProductType.SERVICE ? serviceState?.duration.durationProcessingMinutes : undefined,
+			durationFinalMinutes:
+				existingType === ProductType.SERVICE ? serviceState?.duration.durationFinalMinutes : undefined,
 
 			reorderPoint:
 				existingType === ProductType.SERVICE

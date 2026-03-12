@@ -4,6 +4,8 @@ import apiClient from "@/lib/api/httpClient";
 import { toAuthDomainError } from "./auth.errors";
 import {
 	ApiEnvelope,
+	AuthDeviceSession,
+	AuthDeviceSessionsPayload,
 	AuthPayload,
 	ForgotPasswordPayload,
 	ForgotPasswordResponse,
@@ -114,6 +116,22 @@ export const authApi = {
 	logoutAll: async (): Promise<void> => {
 		return handleAuthRequest(async () => {
 			await apiClient.post("/auth/logout-all");
+		});
+	},
+
+	listDevices: async (): Promise<AuthDeviceSessionsPayload> => {
+		return handleAuthRequest(async () => {
+			const res = await apiClient.get<ApiEnvelope<AuthDeviceSessionsPayload>>("/auth/devices");
+			return res.data.data;
+		});
+	},
+
+	revokeDevice: async (deviceId: string): Promise<{ revokedCount: number }> => {
+		return handleAuthRequest(async () => {
+			const res = await apiClient.post<ApiEnvelope<{ revokedCount: number }>>(
+				`/auth/devices/${encodeURIComponent(deviceId)}/revoke`,
+			);
+			return res.data.data;
 		});
 	},
 };

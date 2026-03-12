@@ -4,6 +4,7 @@
 import axios from "axios";
 import { mmkv, MMKVKeys } from "@/lib/storage/mmkv";
 import { resolveBaseUrl, resolveRuntimeEnvironment } from "@/lib/api/baseUrl";
+import { getAuthClientType, getAuthDeviceName, getOrCreateAuthDeviceId } from "@/modules/auth/auth.device";
 import { getAuthTokens } from "@/modules/auth/auth.storage";
 import { refreshSessionSingleFlight, invalidateAuthSession } from "@/modules/auth/auth.session";
 
@@ -72,6 +73,9 @@ httpClient.interceptors.request.use((config) => {
 	const token = safeTrim(accessToken);
 
 	const businessId = resolveActiveBusinessId();
+	const deviceId = getOrCreateAuthDeviceId();
+	const deviceName = getAuthDeviceName();
+	const clientType = getAuthClientType();
 
 	config.headers = config.headers ?? {};
 
@@ -88,6 +92,10 @@ httpClient.interceptors.request.use((config) => {
 	} else if (config.headers && "X-Active-Business-Id" in (config.headers as object)) {
 		delete (config.headers as any)["X-Active-Business-Id"];
 	}
+
+	(config.headers as any)["X-Device-Id"] = deviceId;
+	(config.headers as any)["X-Device-Name"] = deviceName;
+	(config.headers as any)["X-App-Client"] = clientType;
 
 	/**
 	 * Targeted debug: prove headers for the failing route.
@@ -139,6 +147,7 @@ httpClient.interceptors.response.use(
 		}
 
 		originalConfig._retry = true;
+		const startedWithRefreshToken = getAuthTokens().refreshToken;
 
 		try {
 			await refreshSessionSingleFlight();
@@ -147,8 +156,26 @@ httpClient.interceptors.response.use(
 				originalConfig.headers = originalConfig.headers ?? {};
 				originalConfig.headers.Authorization = `Bearer ${accessToken}`;
 			}
+			originalConfig.headers["X-Device-Id"] = getOrCreateAuthDeviceId();
+			originalConfig.headers["X-Device-Name"] = getAuthDeviceName();
+			originalConfig.headers["X-App-Client"] = getAuthClientType();
 			return httpClient(originalConfig);
 		} catch (refreshError) {
+			const latestTokens = getAuthTokens();
+			if (
+				startedWithRefreshToken &&
+				latestTokens.refreshToken &&
+				latestTokens.refreshToken !== startedWithRefreshToken &&
+				latestTokens.accessToken
+			) {
+				originalConfig.headers = originalConfig.headers ?? {};
+				originalConfig.headers.Authorization = `Bearer ${latestTokens.accessToken}`;
+				originalConfig.headers["X-Device-Id"] = getOrCreateAuthDeviceId();
+				originalConfig.headers["X-Device-Name"] = getAuthDeviceName();
+				originalConfig.headers["X-App-Client"] = getAuthClientType();
+				return httpClient(originalConfig);
+			}
+
 			invalidateAuthSession("refresh_failed");
 			return Promise.reject(refreshError);
 		}

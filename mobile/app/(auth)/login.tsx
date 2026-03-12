@@ -14,7 +14,7 @@ import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
 import { BAITextInput } from "@/components/ui/BAITextInput";
 
-import { AuthDomainError, mapAuthErrorToMessage } from "@/modules/auth/auth.errors";
+import { AuthDomainError, getAuthHelperText, mapAuthErrorToMessage } from "@/modules/auth/auth.errors";
 import { validateEmail, validatePasswordForLogin } from "@/modules/auth/auth.validation";
 
 import { FIELD_LIMITS } from "@/shared/fieldLimits";
@@ -38,6 +38,7 @@ export default function LoginScreen() {
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [helperText, setHelperText] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
 	const submitLockRef = useRef(false);
@@ -97,6 +98,7 @@ export default function LoginScreen() {
 		if (submitLockRef.current) return;
 
 		setError(null);
+		setHelperText(null);
 		setEmail(sanitizedValues.email);
 
 		if (!validate(sanitizedValues)) return;
@@ -153,13 +155,16 @@ export default function LoginScreen() {
 
 				if (typed.code === "VALIDATION_ERROR") {
 					setError(null);
+					setHelperText(null);
 				} else {
 					setError(mapAuthErrorToMessage(typed));
+					setHelperText(getAuthHelperText(typed));
 				}
 			} else {
 				const message =
 					err?.response?.data?.message ?? err?.message ?? "Login failed. Please check your credentials and try again.";
 				setError(message);
+				setHelperText(null);
 			}
 		} finally {
 			setIsSubmitting(false);
@@ -232,9 +237,16 @@ export default function LoginScreen() {
 							<View style={styles.form}>
 								<View style={styles.errorContainer}>
 									{error ? (
-										<BAIText variant='caption' style={styles.errorText}>
-											{error}
-										</BAIText>
+										<>
+											<BAIText variant='caption' style={styles.errorText}>
+												{error}
+											</BAIText>
+											{helperText ? (
+												<BAIText variant='caption' muted>
+													{helperText}
+												</BAIText>
+											) : null}
+										</>
 									) : null}
 								</View>
 
@@ -244,6 +256,7 @@ export default function LoginScreen() {
 										onChangeText={(value) => {
 											setEmail(sanitizeEmailInput(value));
 											setError(null);
+											setHelperText(null);
 											clearFieldError("email");
 										}}
 										autoCapitalize='none'
@@ -270,6 +283,7 @@ export default function LoginScreen() {
 										onChangeText={(value) => {
 											setPassword(value);
 											setError(null);
+											setHelperText(null);
 											clearFieldError("password");
 										}}
 										secureTextEntry={!isPasswordVisible}

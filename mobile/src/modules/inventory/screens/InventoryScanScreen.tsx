@@ -1,28 +1,27 @@
 // path: app/(app)/(tabs)/inventory/scan.tsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as ReactNative from "react-native";
 import {
-	View,
+	AppState,
 	Pressable,
 	StyleSheet,
-	AppState,
-	ScrollView,
 	useWindowDimensions,
+	View,
 	type AppStateStatus,
 	type LayoutChangeEvent,
 } from "react-native";
-import * as ReactNative from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
-import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BAIButton } from "@/components/ui/BAIButton";
+import { BAICTAButton } from "@/components/ui/BAICTAButton";
 import { BAIHeader } from "@/components/ui/BAIHeader";
+import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
-import { BAIButton } from "@/components/ui/BAIButton";
-import { BAICTAButton } from "@/components/ui/BAICTAButton";
-import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAITextInput } from "@/components/ui/BAITextInput";
 import {
 	openAppSettings,
@@ -30,7 +29,6 @@ import {
 	type PermissionFlowState,
 } from "@/modules/inventory/inventory.permissions";
 import { useAppToast } from "@/providers/AppToastProvider";
-import { sanitizeGtinInput } from "@/shared/validation/gtin";
 
 /**
  * Canonical: Inventory search consumes query param "q"
@@ -44,6 +42,27 @@ const PHONE_SCAN_MIN = 220;
 const PHONE_SCAN_MAX = 320;
 const TABLET_SCAN_MIN = 280;
 const TABLET_SCAN_MAX = 420;
+const SCANNED_CODE_INPUT_HEIGHT = 60;
+const DYNAMIC_SECTION_HIDDEN_EXACT_ROUTES = new Set([
+	"/(app)/(tabs)/inventory/products/create",
+	"/inventory/products/create",
+	"/(app)/(tabs)/pos",
+]);
+const TOP_BAR_CARD_HEIGHT = 58;
+const TOP_BAR_CARD_VERTICAL_PADDING = 6;
+const TOP_BAR_TITLE_LINE_HEIGHT = 20;
+const TOP_BAR_HELPER_LINE_HEIGHT = 16;
+const TOP_BAR_TEXT_GAP = 2;
+const TOP_BAR_ICON_SIZE = 58;
+const TOP_BAR_HELPER_CENTER_FROM_TOP =
+	TOP_BAR_CARD_VERTICAL_PADDING +
+	(TOP_BAR_CARD_HEIGHT -
+		TOP_BAR_CARD_VERTICAL_PADDING * 2 -
+		(TOP_BAR_TITLE_LINE_HEIGHT + TOP_BAR_TEXT_GAP + TOP_BAR_HELPER_LINE_HEIGHT)) /
+		2 +
+	TOP_BAR_TITLE_LINE_HEIGHT +
+	TOP_BAR_TEXT_GAP +
+	TOP_BAR_HELPER_LINE_HEIGHT / 2;
 
 type Point = { x: number; y: number };
 type Rect = { x: number; y: number; width: number; height: number };
@@ -60,8 +79,41 @@ type ScanEvent = {
 	} | null;
 };
 
+function pickPreferredLens(lenses: string[]): string | undefined {
+	if (!Array.isArray(lenses) || lenses.length === 0) return undefined;
+	const normalized = lenses.map((lens) => ({
+		lens,
+		key: lens.trim().toLowerCase(),
+	}));
+
+	const findBy = (predicate: (key: string) => boolean): string | undefined => {
+		const match = normalized.find((entry) => predicate(entry.key));
+		return match?.lens;
+	};
+
+	// iOS exposes localized lens labels (for example "Back Ultra Wide Camera").
+	// Prefer close-focus capable lenses first, then fall back safely.
+	const ultraWide = findBy((key) => key.includes("ultra") && key.includes("wide"));
+	if (ultraWide) return ultraWide;
+
+	const dualWide = findBy((key) => key.includes("dual") && key.includes("wide"));
+	if (dualWide) return dualWide;
+
+	const wide = findBy((key) => key.includes("wide") && !key.includes("tele"));
+	if (wide) return wide;
+
+	const nonTele = findBy((key) => !key.includes("tele"));
+	if (nonTele) return nonTele;
+
+	return lenses[0];
+}
+
 function normalizeScanValue(raw: string): string {
 	return raw.trim().replace(/\s+/g, " ");
+}
+
+function normalizeScannedCodeInput(raw: string): string {
+	return normalizeScanValue(String(raw ?? ""));
 }
 
 function finite(v: unknown): number | null {
@@ -108,6 +160,25 @@ function pointInRect(point: Point, rect: Rect): boolean {
 	return point.x >= rect.x && point.y >= rect.y && point.x <= rect.x + rect.width && point.y <= rect.y + rect.height;
 }
 
+function toPathname(value: string | null): string {
+	if (!value) return "";
+	const trimmed = value.trim();
+	if (!trimmed) return "";
+	return trimmed.split("?")[0] ?? "";
+}
+
+function shouldHideDynamicForRoute(returnTo: string | null): boolean {
+	const pathname = toPathname(returnTo);
+	if (!pathname) return false;
+	if (DYNAMIC_SECTION_HIDDEN_EXACT_ROUTES.has(pathname)) return true;
+
+	if (pathname === "/(app)/(tabs)/inventory" || pathname === "/inventory") {
+		return true;
+	}
+
+	return false;
+}
+
 export default function InventoryScanScreen() {
 	const router = useRouter();
 	const theme = useTheme();
@@ -126,11 +197,29 @@ export default function InventoryScanScreen() {
 		if (raw === "universal") return "universal" as const;
 		return "contextual" as const;
 	}, [params.scanIntent]);
+	const scanOriginWorkspace = useMemo(() => {
+		const raw = typeof params.scanOriginWorkspace === "string" ? params.scanOriginWorkspace.trim().toLowerCase() : "";
+		if (raw === "pos") return "pos" as const;
+		if (raw === "inventory") return "inventory" as const;
+		if (raw === "home") return "home" as const;
+		if (raw === "settings") return "settings" as const;
+		return null;
+	}, [params.scanOriginWorkspace]);
 	const isUniversalMode = scanIntent === "universal";
 	const returnTo = useMemo(() => {
 		const raw = typeof params.returnTo === "string" ? params.returnTo.trim() : "";
 		return raw.startsWith("/") ? raw : null;
 	}, [params.returnTo]);
+	const isPosScanFlow = useMemo(() => {
+		if (scanOriginWorkspace === "pos") return true;
+		const pathname = toPathname(returnTo);
+		return pathname === "/(app)/(tabs)/pos" || pathname.startsWith("/(app)/(tabs)/pos/") || pathname === "/pos";
+	}, [returnTo, scanOriginWorkspace]);
+	const shouldShowDynamicSection = useMemo(() => {
+		if (!isUniversalMode) return false;
+		if (isPosScanFlow) return false;
+		return !shouldHideDynamicForRoute(returnTo);
+	}, [isPosScanFlow, isUniversalMode, returnTo]);
 	const returnDraftId = useMemo(() => {
 		const raw = typeof params.draftId === "string" ? params.draftId.trim() : "";
 		return raw || null;
@@ -139,6 +228,7 @@ export default function InventoryScanScreen() {
 	const [permission, requestPermission] = useCameraPermissions();
 	const [permissionHint, setPermissionHint] = useState<string>("");
 	const [torchEnabled, setTorchEnabled] = useState(false);
+	const [selectedLens, setSelectedLens] = useState<string | undefined>(undefined);
 
 	const lockRef = useRef(false);
 	const [lockedUI, setLockedUI] = useState(false);
@@ -155,6 +245,7 @@ export default function InventoryScanScreen() {
 	} | null>(null);
 
 	const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const exitInFlightRef = useRef(false);
 	const fallbackConfirmRef = useRef<{ value: string; ts: number; count: number }>({ value: "", ts: 0, count: 0 });
 
 	const frameGateRect = useMemo<Rect | null>(() => {
@@ -169,12 +260,12 @@ export default function InventoryScanScreen() {
 	}, [scanStageOrigin, scanWindowLayout]);
 
 	const bottomReserve = useMemo(() => Math.max(insets.bottom, 12) + (isTablet ? 88 : 84), [insets.bottom, isTablet]);
-	const universalMaxHeight = useMemo(() => Math.round(height * (isTablet ? 0.34 : 0.42)), [height, isTablet]);
 	const estimatedUniversalHeight = useMemo(() => {
 		if (!universalOpen) return 0;
-		if (universalCardHeight > 0) return Math.min(universalCardHeight, universalMaxHeight);
-		return universalMaxHeight;
-	}, [universalCardHeight, universalMaxHeight, universalOpen]);
+		if (universalCardHeight > 0) return universalCardHeight;
+		return isTablet ? 280 : 360;
+	}, [isTablet, universalCardHeight, universalOpen]);
+	const sheetBottomOffset = useMemo(() => bottomReserve + (isTablet ? 28 : 40), [bottomReserve, isTablet]);
 
 	const scanWindowSize = useMemo(() => {
 		const min = isTablet ? TABLET_SCAN_MIN : PHONE_SCAN_MIN;
@@ -189,6 +280,10 @@ export default function InventoryScanScreen() {
 	}, [bottomReserve, estimatedUniversalHeight, isTablet, previewFrame, universalOpen]);
 
 	const scanStagePaddingTop = useMemo(() => (isTablet ? 78 : 66), [isTablet]);
+	const inverseOutlineBgStyle = useMemo(
+		() => ({ backgroundColor: theme.dark ? "rgb(28,32,38)" : "rgb(34,38,46)" }),
+		[theme.dark],
+	);
 
 	const setLocked = useCallback((v: boolean) => {
 		lockRef.current = v;
@@ -219,7 +314,7 @@ export default function InventoryScanScreen() {
 			return;
 		}
 
-		setPermissionHint("Camera permission is required to scan barcodes.");
+		setPermissionHint("Camera permission is required to scan barcodes and QR codes.");
 	}, [requestPermission]);
 
 	const onOpenSettings = useCallback(async () => {
@@ -242,11 +337,24 @@ export default function InventoryScanScreen() {
 		};
 	}, []);
 
-	const onCancel = useCallback(() => {
+	const resetScanUi = useCallback(() => {
+		exitInFlightRef.current = false;
 		setLocked(false);
 		setUniversalOpen(false);
 		setUniversalScannedValue("");
 		setTorchEnabled(false);
+	}, [setLocked]);
+
+	useFocusEffect(
+		useCallback(() => {
+			return () => {
+				resetScanUi();
+			};
+		}, [resetScanUi]),
+	);
+
+	const onCancel = useCallback(() => {
+		resetScanUi();
 		if (returnTo) {
 			router.replace({
 				pathname: returnTo as any,
@@ -255,7 +363,7 @@ export default function InventoryScanScreen() {
 			return;
 		}
 		router.replace(RETURN_TO as any);
-	}, [returnDraftId, returnTo, router, setLocked]);
+	}, [resetScanUi, returnDraftId, returnTo, router]);
 
 	const closeUniversalSheet = useCallback(() => {
 		setUniversalOpen(false);
@@ -265,19 +373,19 @@ export default function InventoryScanScreen() {
 
 	const openUniversalSheet = useCallback(
 		(value: string) => {
-			setUniversalScannedValue(sanitizeGtinInput(value));
+			setUniversalScannedValue(normalizeScannedCodeInput(value));
 			setUniversalOpen(true);
 			setLocked(true);
 		},
 		[setLocked],
 	);
 
-	const onUniversalBarcodeChange = useCallback((next: string) => {
-		setUniversalScannedValue(sanitizeGtinInput(next));
+	const onUniversalCodeChange = useCallback((next: string) => {
+		setUniversalScannedValue(normalizeScannedCodeInput(next));
 	}, []);
 
 	const normalizedUniversalValue = useMemo(
-		() => sanitizeGtinInput(universalScannedValue).trim(),
+		() => normalizeScannedCodeInput(universalScannedValue),
 		[universalScannedValue],
 	);
 	const canRunUniversalAction = normalizedUniversalValue.length > 0;
@@ -309,12 +417,12 @@ export default function InventoryScanScreen() {
 		} as any);
 	}, [canRunUniversalAction, closeUniversalSheet, normalizedUniversalValue, router]);
 
-	const onUniversalCopyBarcode = useCallback(() => {
+	const onUniversalCopyCode = useCallback(() => {
 		if (!canRunUniversalAction) return;
 		const clipboard = (ReactNative as any).Clipboard;
 		if (clipboard && typeof clipboard.setString === "function") {
 			clipboard.setString(normalizedUniversalValue);
-			showSuccess("Barcode copied.");
+			showSuccess("Code copied.");
 			return;
 		}
 		showError("Copy is not available in this build.");
@@ -326,6 +434,11 @@ export default function InventoryScanScreen() {
 
 	const onToggleTorch = useCallback(() => {
 		setTorchEnabled((v) => !v);
+	}, []);
+
+	const onAvailableLensesChanged = useCallback((event: { lenses: string[] }) => {
+		const preferred = pickPreferredLens(event?.lenses ?? []);
+		setSelectedLens(preferred);
 	}, []);
 
 	const onUniversalScanAgain = useCallback(() => {
@@ -396,16 +509,29 @@ export default function InventoryScanScreen() {
 			}
 
 			if (lockRef.current) return;
+			if (exitInFlightRef.current) return;
 
 			setTorchEnabled(false);
 
-			if (isUniversalMode) {
+			if (shouldShowDynamicSection) {
 				openUniversalSheet(value);
 				return;
 			}
 
+			exitInFlightRef.current = true;
 			setLocked(true);
 			unlockSafetyTimer();
+
+			if (isPosScanFlow) {
+				router.replace({
+					pathname: "/(app)/(tabs)/pos" as any,
+					params: {
+						[SCANNED_BARCODE_KEY]: value,
+						q: value,
+					},
+				} as any);
+				return;
+			}
 
 			if (returnTo) {
 				router.replace({
@@ -427,13 +553,14 @@ export default function InventoryScanScreen() {
 		[
 			allowByFallback,
 			frameGateRect,
-			isUniversalMode,
+			isPosScanFlow,
 			openUniversalSheet,
 			previewFrame,
 			returnDraftId,
 			returnTo,
 			router,
 			setLocked,
+			shouldShowDynamicSection,
 			unlockSafetyTimer,
 		],
 	);
@@ -451,7 +578,15 @@ export default function InventoryScanScreen() {
 						</BAIText>
 
 						<View style={styles.actions}>
-							<BAIButton mode='outlined' onPress={onCancel} shape='pill' widthPreset='standard' intent='neutral'>
+							<BAIButton
+								mode='outlined'
+								onPress={onCancel}
+								shape='pill'
+								widthPreset='standard'
+								intent='neutral'
+								variant='inverse'
+								style={[styles.inverseOutlineButton, inverseOutlineBgStyle]}
+							>
 								Cancel
 							</BAIButton>
 						</View>
@@ -467,7 +602,7 @@ export default function InventoryScanScreen() {
 			permissionHint ||
 			(isPermissionBlocked
 				? "Camera access is blocked. Open Settings to allow camera access for scanning."
-				: "Enable camera access to scan barcodes.");
+				: "Enable camera access to scan barcodes and QR codes.");
 
 		return (
 			<>
@@ -481,19 +616,31 @@ export default function InventoryScanScreen() {
 						</BAIText>
 
 						<View style={styles.actions}>
-							<BAICTAButton onPress={onRequestCameraPermission}>Allow Camera</BAICTAButton>
+							<BAICTAButton intent='neutral' variant='inverse' onPress={onRequestCameraPermission}>
+								Allow Camera
+							</BAICTAButton>
 							{isPermissionBlocked ? (
 								<BAIButton
 									mode='outlined'
 									onPress={onOpenSettings}
 									shape='pill'
 									widthPreset='standard'
-									intent='primary'
+									intent='neutral'
+									variant='inverse'
+									style={[styles.inverseOutlineButton, inverseOutlineBgStyle]}
 								>
 									Open Settings
 								</BAIButton>
 							) : null}
-							<BAIButton mode='outlined' onPress={onCancel} shape='pill' widthPreset='standard' intent='neutral'>
+							<BAIButton
+								mode='outlined'
+								onPress={onCancel}
+								shape='pill'
+								widthPreset='standard'
+								intent='neutral'
+								variant='inverse'
+								style={[styles.inverseOutlineButton, inverseOutlineBgStyle]}
+							>
 								Cancel
 							</BAIButton>
 						</View>
@@ -513,7 +660,10 @@ export default function InventoryScanScreen() {
 						<CameraView
 							style={StyleSheet.absoluteFill}
 							facing='back'
+							autofocus='off'
+							selectedLens={selectedLens}
 							enableTorch={torchEnabled}
+							onAvailableLensesChanged={onAvailableLensesChanged}
 							barcodeScannerSettings={{
 								barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"],
 							}}
@@ -523,29 +673,36 @@ export default function InventoryScanScreen() {
 						<View style={styles.overlayContainer} pointerEvents='box-none'>
 							<Pressable style={StyleSheet.absoluteFill} onPress={dismissKeyboard} accessibilityRole='none' />
 							<View style={styles.topBar} pointerEvents='box-none'>
-								<BAISurface style={styles.topBarCard}>
-									<BAIText variant='subtitle'>{lockedUI ? "Captured" : "Scan barcode"}</BAIText>
-									<BAIText variant='caption' muted>
-										{lockedUI && !universalOpen ? "Returning to Inventory..." : "Scan inside the frame."}
-									</BAIText>
-								</BAISurface>
-								<View style={styles.topBarActions}>
+								<View style={styles.topBarContent}>
+									<BAISurface style={styles.topBarCard}>
+										<BAIText variant='subtitle' style={styles.topBarTitle}>
+											{lockedUI ? "Captured" : "Scan barcode or QR code"}
+										</BAIText>
+										<BAIText variant='caption' style={styles.topBarHelperText}>
+											{lockedUI && !universalOpen ? "Returning to Inventory..." : "Scan inside the frame."}
+										</BAIText>
+									</BAISurface>
 									<BAIIconButton
 										icon='flashlight'
 										variant='outlined'
 										size='xxl'
-										iconColor={torchEnabled ? theme.colors.primary : undefined}
+										iconColor='rgba(255,255,255,0.94)'
 										accessibilityLabel={torchEnabled ? "Turn flashlight off" : "Turn flashlight on"}
 										onPress={onToggleTorch}
-										style={[styles.topBarCloseButton, torchEnabled ? { borderColor: theme.colors.primary } : null]}
+										style={[
+											styles.topBarIconButton,
+											styles.topBarTorchButton,
+											torchEnabled ? styles.topBarButtonActive : null,
+										]}
 									/>
 									<BAIIconButton
 										icon='close'
 										variant='outlined'
 										size='xxl'
+										iconColor='rgba(255,255,255,0.94)'
 										accessibilityLabel='Close scan'
 										onPress={onCancel}
-										style={styles.topBarCloseButton}
+										style={[styles.topBarIconButton, styles.topBarCloseButton]}
 									/>
 								</View>
 							</View>
@@ -567,97 +724,97 @@ export default function InventoryScanScreen() {
 								</View>
 							</View>
 
-							{isUniversalMode && universalOpen ? (
-								<View style={[styles.bottomSheet, { marginBottom: bottomReserve }]}>
-									<BAISurface
-										style={[
-											styles.bottomCard,
-											{
-												maxHeight: universalMaxHeight,
-												backgroundColor: theme.dark ? "rgba(28,30,36,0.82)" : "rgba(255,255,255,0.88)",
-											},
-										]}
-										onLayout={onUniversalCardLayout}
-									>
-										<ScrollView
-											showsVerticalScrollIndicator={false}
-											keyboardShouldPersistTaps='handled'
-											keyboardDismissMode='on-drag'
-											contentContainerStyle={styles.bottomCardScrollContent}
-										>
-											<View style={styles.dynamicHeading}>
-												<BAIText variant='subtitle'>Use scanned barcode</BAIText>
-												<BAIText variant='caption' muted>
-													Edit the barcode if needed, then choose where to apply it.
-												</BAIText>
-											</View>
+							{shouldShowDynamicSection && universalOpen ? (
+								<ReactNative.TouchableWithoutFeedback accessible={false} onPress={dismissKeyboard}>
+									<View style={[styles.bottomSheet, { marginBottom: sheetBottomOffset }]}> 
+											<View onLayout={onUniversalCardLayout}>
+												<BAISurface
+													style={[
+														styles.bottomCard,
+														{
+															backgroundColor: theme.dark ? "rgba(28,30,36,0.82)" : "rgba(255,255,255,0.88)",
+														},
+													]}
+												>
+													<View style={styles.bottomCardContent}>
+														<View style={styles.dynamicHeading}>
+															<BAIText variant='subtitle'>Use scanned code</BAIText>
+															<BAIText variant='caption' muted>
+																Edit the scanned value if needed, then choose where to apply it.
+															</BAIText>
+														</View>
 
-											<BAITextInput
-												label='Scanned barcode'
-												value={universalScannedValue}
-												onChangeText={onUniversalBarcodeChange}
-												keyboardType='number-pad'
-												maxLength={14}
-												shape='pill'
-												autoCorrect={false}
-												autoCapitalize='none'
-											/>
+														<BAITextInput
+															label='Scanned code'
+															value={universalScannedValue}
+															onChangeText={onUniversalCodeChange}
+															height={SCANNED_CODE_INPUT_HEIGHT}
+															style={styles.scannedCodeInput}
+															dense
+															contentStyle={styles.scannedCodeInputText}
+															keyboardType='default'
+															maxLength={512}
+															autoCorrect={false}
+															autoCapitalize='none'
+														/>
 
-											<View style={styles.actions}>
-												<BAICTAButton
-													onPress={onUniversalSearchInventory}
-													disabled={!canRunUniversalAction}
-													shape='pill'
-												>
-													Search Inventory
-												</BAICTAButton>
-												<BAIButton
-													mode='outlined'
-													onPress={onUniversalCreateItem}
-													disabled={!canRunUniversalAction}
-													shape='pill'
-													widthPreset='full'
-													intent='neutral'
-												>
-													Create Item with Barcode
-												</BAIButton>
-												<BAIButton
-													mode='outlined'
-													onPress={onUniversalFindInPos}
-													disabled={!canRunUniversalAction}
-													shape='pill'
-													widthPreset='full'
-													intent='neutral'
-												>
-													Find in POS Catalog
-												</BAIButton>
-												<View style={styles.inlineActionsRow}>
-													<BAIButton
-														mode='outlined'
-														onPress={onUniversalScanAgain}
-														shape='pill'
-														widthPreset='full'
-														intent='neutral'
-														style={styles.inlineActionButton}
-													>
-														Scan Again
-													</BAIButton>
-													<BAIButton
-														mode='outlined'
-														onPress={onUniversalCopyBarcode}
-														disabled={!canRunUniversalAction}
-														shape='pill'
-														widthPreset='full'
-														intent='neutral'
-														style={styles.inlineActionButton}
-													>
-														Copy Barcode
-													</BAIButton>
-												</View>
+														<View style={styles.actions}>
+															<BAICTAButton onPress={onUniversalSearchInventory} disabled={!canRunUniversalAction}>
+																Search Inventory
+															</BAICTAButton>
+															<BAIButton
+																mode='outlined'
+																onPress={onUniversalCreateItem}
+																disabled={!canRunUniversalAction}
+																widthPreset='full'
+																intent='neutral'
+																variant='inverse'
+																style={[styles.inverseOutlineButton, inverseOutlineBgStyle]}
+															>
+																Create Item with Code
+															</BAIButton>
+															<BAIButton
+																mode='outlined'
+																onPress={onUniversalFindInPos}
+																disabled={!canRunUniversalAction}
+																widthPreset='full'
+																intent='neutral'
+																variant='inverse'
+																style={[styles.inverseOutlineButton, inverseOutlineBgStyle]}
+															>
+																Find in POS Catalog
+															</BAIButton>
+															<View style={styles.inlineActionsRow}>
+																<BAIButton
+																	mode='outlined'
+																	onPress={onUniversalScanAgain}
+																	shape='pill'
+																	widthPreset='full'
+																	intent='neutral'
+																	variant='inverse'
+																	style={[styles.inverseOutlineButton, inverseOutlineBgStyle, styles.inlineActionButton]}
+																>
+																	Scan Again
+																</BAIButton>
+																<BAIButton
+																	mode='outlined'
+																	onPress={onUniversalCopyCode}
+																	disabled={!canRunUniversalAction}
+																	shape='pill'
+																	widthPreset='full'
+																	intent='neutral'
+																	variant='inverse'
+																	style={[styles.inverseOutlineButton, inverseOutlineBgStyle, styles.inlineActionButton]}
+																>
+																	Copy Code
+																</BAIButton>
+															</View>
+														</View>
+													</View>
+												</BAISurface>
 											</View>
-										</ScrollView>
-									</BAISurface>
-								</View>
+										</View>
+								</ReactNative.TouchableWithoutFeedback>
 							) : null}
 						</View>
 					</View>
@@ -683,28 +840,51 @@ const styles = StyleSheet.create({
 	topBar: {
 		flexDirection: "row",
 		alignItems: "flex-start",
-		justifyContent: "space-between",
+		justifyContent: "flex-start",
+	},
+	topBarContent: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 8,
+		width: "100%",
+		flexShrink: 1,
 	},
 	topBarCard: {
-		paddingHorizontal: 14,
-		paddingVertical: 8,
-		minHeight: 52,
+		paddingHorizontal: 20,
+		paddingVertical: TOP_BAR_CARD_VERTICAL_PADDING,
+		height: TOP_BAR_CARD_HEIGHT,
 		justifyContent: "center",
 		flexShrink: 1,
 		maxWidth: "80%",
 		backgroundColor: "rgba(0,0,0,0.45)",
-		borderRadius: 16,
+		borderRadius: 999,
 		borderWidth: 1,
-		borderColor: "rgba(255,255,255,0.15)",
+		borderColor: "rgba(255,255,255,0.2)",
+		marginTop: 0,
 	},
-	topBarCloseButton: {
+	topBarTitle: {
+		color: "rgba(255,255,255,0.96)",
+		lineHeight: TOP_BAR_TITLE_LINE_HEIGHT,
+	},
+	topBarHelperText: {
+		color: "rgba(255,255,255,0.82)",
+		lineHeight: TOP_BAR_HELPER_LINE_HEIGHT,
+		paddingHorizontal: 14,
+		marginTop: TOP_BAR_TEXT_GAP,
+	},
+	topBarIconButton: {
 		backgroundColor: "rgba(0,0,0,0.45)",
 		borderColor: "rgba(255,255,255,0.2)",
+		marginTop: 0,
 	},
-	topBarActions: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		gap: 8,
+	topBarCloseButton: {
+		marginLeft: "auto",
+	},
+	topBarTorchButton: {
+		marginTop: 0,
+	},
+	topBarButtonActive: {
+		borderColor: "rgba(255,255,255,0.72)",
 	},
 	// Scan stage
 	scanStage: {
@@ -775,12 +955,24 @@ const styles = StyleSheet.create({
 		padding: 16,
 		gap: 10,
 		overflow: "hidden",
+		marginBottom: 0,
 	},
-	bottomCardScrollContent: {
+	bottomCardContent: {
 		gap: 10,
 	},
 	dynamicHeading: {
 		gap: 2,
+	},
+	scannedCodeInput: {
+		paddingTop: 0,
+	},
+	scannedCodeInputText: {
+		fontSize: 22,
+		fontWeight: "700",
+		lineHeight: 28,
+		textAlignVertical: "center",
+		paddingTop: 0,
+		paddingBottom: 0,
 	},
 	inlineActionsRow: {
 		flexDirection: "row",
@@ -788,6 +980,10 @@ const styles = StyleSheet.create({
 	},
 	inlineActionButton: {
 		flex: 1,
+	},
+	inverseOutlineButton: {
+		borderWidth: 1,
+		borderColor: "rgba(255,255,255,0.32)",
 	},
 	bottomActions: {
 		flexDirection: "row",

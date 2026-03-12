@@ -40,7 +40,7 @@ export function BAISearchWithScanButton({
 	maxLength = FIELD_LIMITS.search,
 	height = DEFAULT_HEIGHT,
 	searchAccessibilityLabel = "Search",
-	scanAccessibilityLabel = "Scan barcode",
+	scanAccessibilityLabel = "Scan barcode or QR code",
 	style,
 	searchStyle,
 	scanButtonStyle,

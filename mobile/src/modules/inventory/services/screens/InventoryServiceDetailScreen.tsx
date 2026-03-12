@@ -23,11 +23,14 @@ import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta"
 import { DEFAULT_SERVICE_TOTAL_DURATION_MINUTES } from "@/modules/inventory/drafts/serviceCreateDraft";
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
+import { LOCAL_URI_KEY } from "@/modules/inventory/posTile.contract";
 import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import type { InventoryProductDetail } from "@/modules/inventory/inventory.types";
 import { formatDurationLabel } from "@/modules/inventory/services/serviceDuration";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { useNavLock } from "@/shared/hooks/useNavLock";
+import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 import { formatMoney } from "@/shared/money/money.format";
 import { sanitizeLabelInput, sanitizeProductNameInput } from "@/shared/validation/sanitize";
 
@@ -140,15 +143,20 @@ export default function InventoryServiceDetailScreen({
 	const { canNavigate, safePush } = useNavLock({ lockMs: 650 });
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 	const { currencyCode } = useActiveBusinessMeta();
+	const operationalRefreshInterval = useOperationalQueryAutoRefresh();
 
-	const params = useLocalSearchParams<{ id: string }>();
+	const params = useLocalSearchParams<{ id: string; localUri?: string }>();
 	const productId = useMemo(() => String(params.id ?? "").trim(), [params.id]);
+	const incomingLocalImageUri = useMemo(() => String(params[LOCAL_URI_KEY] ?? "").trim(), [params]);
+	const [optimisticImageUri, setOptimisticImageUri] = useState("");
 
 	const detailQuery = useQuery<InventoryProductDetail>({
 		queryKey: inventoryKeys.productDetail(productId),
 		queryFn: () => inventoryApi.getProductDetail(productId),
 		enabled: !!productId,
 		staleTime: 30_000,
+		refetchInterval: productId ? operationalRefreshInterval : false,
+		refetchIntervalInBackground: false,
 	});
 
 	const product = detailQuery.data ?? null;
@@ -211,10 +219,16 @@ export default function InventoryServiceDetailScreen({
 		return formatMoney({ amount: value, currencyCode });
 	}, [currencyCode, product]);
 
-	const imageUri = useMemo(() => {
-		const raw = typeof (product as any)?.primaryImageUrl === "string" ? (product as any).primaryImageUrl.trim() : "";
-		return raw;
-	}, [product]);
+	const imageUri = useMemo(
+		() => optimisticImageUri || toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt),
+		[optimisticImageUri, product],
+	);
+
+	useEffect(() => {
+		if (!incomingLocalImageUri) return;
+		setOptimisticImageUri(incomingLocalImageUri);
+		(router as any).setParams?.({ [LOCAL_URI_KEY]: undefined });
+	}, [incomingLocalImageUri, router]);
 
 	const tileColor = useMemo(() => {
 		const raw = typeof (product as any)?.posTileColor === "string" ? (product as any).posTileColor.trim() : "";

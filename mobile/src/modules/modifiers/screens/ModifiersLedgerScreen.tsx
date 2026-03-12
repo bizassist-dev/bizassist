@@ -233,7 +233,7 @@ export function ModifiersLedgerScreen() {
 				<TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
 					<View style={styles.wrap}>
 						<View style={[styles.content, isTablet ? styles.tablet : null]}>
-							<BAISurface style={styles.card} padded={false} bordered={false}>
+							<BAISurface style={[styles.card, styles.cardTransparent]} padded={false} bordered={false}>
 								<BAIGovernedScrollableLayout
 									top={
 										<View
@@ -321,6 +321,9 @@ export function ModifiersLedgerScreen() {
 													contentContainerStyle={styles.listContent}
 													keyboardShouldPersistTaps='handled'
 													showsVerticalScrollIndicator={false}
+													initialNumToRender={10}
+													maxToRenderPerBatch={10}
+													windowSize={7}
 												/>
 											)}
 										</View>
@@ -341,29 +344,31 @@ const styles = StyleSheet.create({
 	content: { flex: 1, minHeight: 0, width: "100%", alignSelf: "center" },
 	tablet: { maxWidth: 720 },
 	card: { flex: 1, minHeight: 0, borderRadius: 18, gap: 6 },
+	cardTransparent: { backgroundColor: "transparent" },
 	controlsContainer: {
 		borderWidth: 1,
 		borderRadius: 14,
 		paddingHorizontal: 8,
-		paddingTop: 8,
-		paddingBottom: 6,
+		paddingTop: 6,
+		paddingBottom: 10,
 		marginBottom: 10,
 	},
-	controls: { gap: 4, paddingBottom: 2 },
-	searchControl: { paddingTop: 8 },
+	controls: { gap: 2, paddingBottom: 0 },
+	searchControl: { paddingTop: 4 },
 	groupTabsWrap: {
-		paddingTop: 6,
+		paddingTop: 2,
 	},
 	listSection: { flex: 1, minHeight: 0 },
 	list: { flex: 1, minHeight: 0 },
 	stateWrap: { paddingTop: 8, alignItems: "flex-start" },
-	listContent: { gap: 0, paddingBottom: 4 },
+	listContent: { gap: 0, paddingBottom: 200 },
 	row: {
 		borderWidth: 1,
 		borderRadius: 12,
+		marginBottom: 8,
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: 6,
+		paddingVertical: 8,
 	},
 	pressArea: {
 		flex: 1,

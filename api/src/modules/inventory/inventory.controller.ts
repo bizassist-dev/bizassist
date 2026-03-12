@@ -7,6 +7,7 @@ import { inventoryService } from "./inventory.service";
 import { normalizeIdempotencyKey, type InventoryAdjustmentInput } from "./inventory.validators";
 
 import { respondWithEtagJson } from "@/shared/http/etagResponse";
+import { publishCatalogProductChanged, publishInventoryStockChanged } from "@/modules/realtime/realtime.events";
 
 function getBusinessId(req: Request): string {
 	return req.user!.activeBusinessId!;
@@ -39,6 +40,7 @@ export const adjustStock = asyncHandler(async (req: Request, res: Response) => {
 
 	const idempotencyKey = resolveIdempotencyKey(req, input);
 	const result = await inventoryService.adjustStock(businessId, { ...input, idempotencyKey });
+	publishInventoryStockChanged({ businessId, productId: input.productId });
 	res.status(StatusCodes.OK).json({ success: true, data: result });
 });
 
@@ -96,6 +98,7 @@ export const removeInventoryProductImage = asyncHandler(async (req: Request, res
 	const productId = String(req.params.id);
 
 	const data = await inventoryService.removeProductPrimaryImage(businessId, productId);
+	publishCatalogProductChanged({ businessId, productId });
 	res.status(StatusCodes.OK).json({ success: true, data });
 });
 

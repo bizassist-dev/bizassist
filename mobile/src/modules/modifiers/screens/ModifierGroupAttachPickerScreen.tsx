@@ -7,6 +7,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIHeader } from "@/components/ui/BAIHeader";
+import { BAIHeaderActionButton } from "@/components/ui/BAIHeaderActionButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISearchBar } from "@/components/ui/BAISearchBar";
@@ -177,26 +178,9 @@ export function ModifierGroupAttachPickerScreen() {
 					variant='back'
 					onLeftPress={onBack}
 					onRightPress={onConfirm}
+					rightRailWidth={96}
 					rightDisabled={isApplyDisabled}
-					rightSlot={({ disabled }) => (
-						<View
-							style={[
-								styles.headerApplyPill,
-								{ backgroundColor: disabled ? theme.colors.surfaceDisabled : theme.colors.primary },
-							]}
-						>
-							<BAIText
-								variant='body'
-								style={{
-									color: disabled ? theme.colors.onSurfaceDisabled : theme.colors.onPrimary,
-									fontSize: 16,
-									fontWeight: "600",
-								}}
-							>
-								Save
-							</BAIText>
-						</View>
-					)}
+					rightSlot={({ disabled }) => <BAIHeaderActionButton label='Save' variant='solid-primary' disabled={disabled} />}
 				/>
 				<TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
 					<View style={styles.wrap}>

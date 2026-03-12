@@ -88,10 +88,9 @@ export default function SettingsPhoneScreen() {
 			{
 				key: "devices",
 				title: "Devices",
-				subtitle: "Connected devices (v1: placeholder)",
+				subtitle: "Manage active sessions and remove old devices",
 				icon: "cellphone",
-				onPress: () => {},
-				disabled: true,
+				onPress: () => router.push("/(app)/(tabs)/settings/devices"),
 			},
 			{
 				key: "about",

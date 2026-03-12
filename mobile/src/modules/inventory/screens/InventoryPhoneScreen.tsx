@@ -5,8 +5,7 @@
 // - Remove standalone count badge rows (no “pill clouds”)
 // - Embed counts directly into tabs:
 //   1) Sellable Type: Items / Services (counts)
-//   2) Lifecycle: Active / Archived (counts)
-//   3) Stock Health: All / In / Low / Out (counts) — Items + Active only
+//   2) Stock Health: All / In / Low / Out (counts) — Items only
 // - Keep server search (q) and apply tab filtering client-side
 // - Preserve kiss layout, keyboard avoidance + dismissal
 // - Use SearchBar inline clear affordance (no extra “Clear Search” row)
@@ -35,8 +34,8 @@
 // - stock-health filters are applied to active, inventory-tracked items only
 // - this list screen is read model + navigation shell; stock mutations occur in dedicated ledger flows
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, FlatList, RefreshControl, Platform } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, StyleSheet, FlatList, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -49,7 +48,6 @@ import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIEmptyStateButton } from "@/components/ui/BAIEmptyStateButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIGroupTabs, type BAIGroupTab } from "@/components/ui/BAIGroupTabs";
-import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 
 import { InventorySearchBar } from "@/modules/inventory/components/InventorySearchBar";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
@@ -69,10 +67,11 @@ import { unitsKeys } from "@/modules/units/units.queries";
 import type { Unit } from "@/modules/units/units.types";
 
 import { useNavLock } from "@/shared/hooks/useNavLock";
+import { useInsertedRowAttention } from "@/shared/hooks/useInsertedRowAttention";
+import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 
 type InventorySellableTabValue = "ITEMS" | "SERVICES";
 type InventoryHealthTabValue = "ALL" | "LOW_STOCK" | "OUT_OF_STOCK" | "IN_STOCK";
-type InventoryStatusTabValue = "ACTIVE" | "ARCHIVED";
 
 const DECIMAL_PATTERN = /^-?\d+(\.\d+)?$/;
 const INVENTORY_PAGE_SIZE = 50;
@@ -218,19 +217,6 @@ function normalizeHealthTab(raw: unknown): InventoryHealthTabValue {
 	return "ALL";
 }
 
-function normalizeStatusTab(raw: unknown): InventoryStatusTabValue {
-	const s = String(raw ?? "")
-		.trim()
-		.toUpperCase();
-	if (s === "ARCHIVED") return "ARCHIVED";
-	return "ACTIVE";
-}
-
-function filterByStatusTab(items: InventoryProduct[], status: InventoryStatusTabValue): InventoryProduct[] {
-	if (status === "ARCHIVED") return items.filter((item) => item.isActive === false);
-	return items.filter((item) => item.isActive !== false);
-}
-
 // ------------------------------
 // Inventory Health tab filtering
 // ------------------------------
@@ -340,18 +326,19 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	const { countryCode } = useActiveBusinessMeta();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 
-	const params = useLocalSearchParams<{ q?: string; filter?: string; status?: string; type?: string }>();
+	const params = useLocalSearchParams<{ q?: string; filter?: string; type?: string }>();
 	const paramQ = useMemo(() => String(params.q ?? "").trim(), [params.q]);
 
 	const [q, setQ] = useState(paramQ);
 	useEffect(() => setQ(paramQ), [paramQ]);
 
-	const [isRefreshing, setIsRefreshing] = useState(false);
+	const refreshInFlightRef = useRef(false);
 
 	const { canNavigate, safePush } = useNavLock({ lockMs: 650 });
 
 	const trimmedQ = useMemo(() => q.trim(), [q]);
 	const [debouncedQ, setDebouncedQ] = useState(trimmedQ);
+	const operationalRefreshInterval = useOperationalQueryAutoRefresh();
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
@@ -363,20 +350,20 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	// URL-state normalization
 	const sellableTabValue: InventorySellableTabValue = useMemo(() => normalizeSellableTab(params.type), [params.type]);
 	const healthTabValue: InventoryHealthTabValue = useMemo(() => normalizeHealthTab(params.filter), [params.filter]);
-	const statusTabValue: InventoryStatusTabValue = useMemo(() => normalizeStatusTab(params.status), [params.status]);
-
 	const productsQuery = useInfiniteQuery({
-		queryKey: inventoryKeys.products(debouncedQ, { includeArchived: true }),
+		queryKey: inventoryKeys.productsInfinite(debouncedQ, { includeArchived: false }),
 		initialPageParam: undefined as string | undefined,
 		queryFn: ({ pageParam }) =>
 			inventoryApi.listProducts({
 				q: debouncedQ || undefined,
-				includeArchived: true,
+				includeArchived: false,
 				limit: INVENTORY_PAGE_SIZE,
 				cursor: pageParam ?? undefined,
 			}),
 		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
 		staleTime: 30_000,
+		refetchInterval: operationalRefreshInterval,
+		refetchIntervalInBackground: false,
 	});
 
 	const categoriesQuery = useQuery<{ items: Category[] }>({
@@ -417,37 +404,34 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	// Apply sellable selection
 	const sellableItems = useMemo(() => filterBySellableTab(allItems, sellableTabValue), [allItems, sellableTabValue]);
 
-	// Status partitions for current sellable
-	const activeSellableItems = useMemo(() => filterByStatusTab(sellableItems, "ACTIVE"), [sellableItems]);
-	const archivedSellableItems = useMemo(() => filterByStatusTab(sellableItems, "ARCHIVED"), [sellableItems]);
-	const statusFilteredItems = useMemo(
-		() => filterByStatusTab(sellableItems, statusTabValue),
-		[sellableItems, statusTabValue],
-	);
-
-	// Health tabs and counts apply to Items for the current lifecycle (Active/Archived).
+	// Health tabs and counts apply to Items only.
 	const showHealthTabs = sellableTabValue === "ITEMS";
-	const itemsForHealth = useMemo(
-		() => (showHealthTabs ? statusFilteredItems : []),
-		[showHealthTabs, statusFilteredItems],
-	);
+	const itemsForHealth = useMemo(() => (showHealthTabs ? sellableItems : []), [showHealthTabs, sellableItems]);
 	const healthCounts = useMemo(() => getInventoryHealthCounts(itemsForHealth), [itemsForHealth]);
 	const healthAllCount = itemsForHealth.length;
 
 	// Apply health filter only when valid
 	const filteredItems = useMemo(() => {
-		if (!showHealthTabs) return statusFilteredItems;
-		return filterByHealthTab(statusFilteredItems, healthTabValue);
-	}, [healthTabValue, showHealthTabs, statusFilteredItems]);
+		if (!showHealthTabs) return sellableItems;
+		return filterByHealthTab(sellableItems, healthTabValue);
+	}, [healthTabValue, showHealthTabs, sellableItems]);
+	const rowAttentionTokens = useInsertedRowAttention(
+		useMemo(() => filteredItems.map((item) => item.id), [filteredItems]),
+		{
+			scopeKey: `${routeScope}:${sellableTabValue}:${healthTabValue}:${debouncedQ}`,
+		},
+	);
 
 	const isSearching = trimmedQ.length > 0;
 	const hasActiveFilter = showHealthTabs && healthTabValue !== "ALL";
 
 	const onRefresh = useCallback(() => {
-		if (isRefreshing) return;
-		setIsRefreshing(true);
-		productsQuery.refetch().finally(() => setIsRefreshing(false));
-	}, [isRefreshing, productsQuery]);
+		if (refreshInFlightRef.current || productsQuery.isFetching) return;
+		refreshInFlightRef.current = true;
+		productsQuery.refetch().finally(() => {
+			refreshInFlightRef.current = false;
+		});
+	}, [productsQuery]);
 
 	const onEndReached = useCallback(() => {
 		if (!productsQuery.hasNextPage) return;
@@ -474,18 +458,6 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 		[canNavigate, router],
 	);
 
-	const setStatusTab = useCallback(
-		(v: InventoryStatusTabValue) => {
-			if (!canNavigate) return;
-			if (v === "ACTIVE") {
-				router.setParams({ status: undefined });
-				return;
-			}
-			router.setParams({ status: "ARCHIVED" });
-		},
-		[canNavigate, router],
-	);
-
 	const setHealthTab = useCallback(
 		(v: InventoryHealthTabValue) => {
 			if (!canNavigate) return;
@@ -504,14 +476,6 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 		[allItemItems.length, allServiceItems.length],
 	);
 
-	const statusTabs: readonly BAIGroupTab<InventoryStatusTabValue>[] = useMemo(
-		() => [
-			{ label: "Active", value: "ACTIVE", count: activeSellableItems.length },
-			{ label: "Archived", value: "ARCHIVED", count: archivedSellableItems.length },
-		],
-		[activeSellableItems.length, archivedSellableItems.length],
-	);
-
 	const healthTabs: readonly BAIGroupTab<InventoryHealthTabValue>[] = useMemo(
 		() => [
 			{ label: "All", value: "ALL", count: healthAllCount },
@@ -525,38 +489,25 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	const isInitialLoading = productsQuery.isLoading && allItems.length === 0;
 	const isInitialError = !!productsQuery.isError && allItems.length === 0;
 
-	const emptyTitle =
-		statusTabValue === "ARCHIVED"
+	const emptyTitle = hasActiveFilter
+		? inventoryHealthEmptyTitle(healthTabValue)
+		: isSearching
 			? sellableTabValue === "SERVICES"
-				? "No Archived Services"
-				: "No Archived Items"
-			: hasActiveFilter
-				? inventoryHealthEmptyTitle(healthTabValue)
-				: isSearching
-					? sellableTabValue === "SERVICES"
-						? "No Matching Services"
-						: "No Matching Items"
-					: sellableTabValue === "SERVICES"
-						? "No Services Yet"
-						: "No Items Yet";
+				? "No Matching Services"
+				: "No Matching Items"
+			: sellableTabValue === "SERVICES"
+				? "No Services Yet"
+				: "No Items Yet";
 
-	const emptyBody =
-		statusTabValue === "ARCHIVED"
-			? "Archived entries will appear here."
-			: hasActiveFilter
-				? "Select “All” To View All Active Inventory."
-				: isSearching
-					? "Adjust Your Search Or Scan A Different Barcode."
-					: sellableTabValue === "SERVICES"
-						? "Create Your First Service To Start Selling Time-Based Work."
-						: "Add Your First Item To Begin Tracking Inventory.";
+	const emptyBody = hasActiveFilter
+		? "Select “All” To View All Active Inventory."
+		: isSearching
+			? "Adjust Your Search Or Scan A Different Barcode."
+			: sellableTabValue === "SERVICES"
+				? "Create Your First Service To Start Selling Time-Based Work."
+				: "Add Your First Item To Begin Tracking Inventory.";
 
-	const showPrimaryEmptyCta =
-		statusTabValue === "ACTIVE" &&
-		!isSearching &&
-		!hasActiveFilter &&
-		filteredItems.length === 0 &&
-		!productsQuery.isError;
+	const showPrimaryEmptyCta = !isSearching && !hasActiveFilter && filteredItems.length === 0 && !productsQuery.isError;
 
 	const renderInventoryRow = useCallback(
 		({ item }: { item: InventoryProduct }) => {
@@ -578,6 +529,7 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 					item={rowItem}
 					categoryIsActive={categoryIsActive}
 					categoryColor={categoryColor}
+					attentionPulseKey={rowAttentionTokens[item.id]}
 					showOnHandUnit={false}
 					onPress={() => {
 						const isSvc = isService(item);
@@ -588,7 +540,7 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 				/>
 			);
 		},
-		[canNavigate, categoryMetaById, router, safePush, toScopedRoute, unitsById],
+		[canNavigate, categoryMetaById, rowAttentionTokens, router, safePush, toScopedRoute, unitsById],
 	);
 
 	const syncLabel = productsQuery.isFetching ? "Syncing…" : "Synced";
@@ -671,18 +623,7 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 										/>
 									</View>
 
-									{/* 2) Lifecycle */}
-									<View style={styles.tabsRowTight}>
-										<BAIGroupTabs<InventoryStatusTabValue>
-											tabs={statusTabs}
-											value={statusTabValue}
-											onChange={setStatusTab}
-											disabled={!canNavigate}
-											countFormatter={(count) => formatCompactCount(count, countryCode)}
-										/>
-									</View>
-
-									{/* 3) Stock Health — Items + Active only */}
+									{/* 2) Stock Health — Items only */}
 									{showHealthTabs ? (
 										<View style={styles.tabsRowTight}>
 											<BAIGroupTabs<InventoryHealthTabValue>
@@ -702,7 +643,6 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 						<View style={styles.scrollArea}>
 							{isInitialLoading ? (
 								<View style={styles.centerState}>
-									<BAIActivityIndicator size='small' />
 									<BAIText variant='body' muted style={styles.centerStateText}>
 										Loading inventory...
 									</BAIText>
@@ -730,7 +670,6 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 									]}
 									showsVerticalScrollIndicator={false}
 									showsHorizontalScrollIndicator={false}
-									refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
 									renderItem={renderInventoryRow}
 									ItemSeparatorComponent={() => <View style={styles.itemGap} />}
 									ListEmptyComponent={
@@ -757,11 +696,7 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 									keyboardDismissMode={Platform.OS === "ios" ? "on-drag" : "none"}
 									onEndReached={onEndReached}
 									onEndReachedThreshold={0.4}
-									ListFooterComponent={
-										<View style={styles.loadMoreFooter}>
-											{productsQuery.isFetchingNextPage ? <BAIActivityIndicator size='small' /> : null}
-										</View>
-									}
+									ListFooterComponent={<View style={styles.loadMoreFooter} />}
 								/>
 							)}
 						</View>
@@ -784,7 +719,7 @@ const styles = StyleSheet.create({
 		gap: 0,
 	},
 	fixedTopZone: {
-		gap: 6,
+		gap: 4,
 		paddingTop: 6,
 		paddingBottom: 6,
 	},
@@ -793,7 +728,7 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "flex-start",
 		justifyContent: "space-between",
-		paddingBottom: 4,
+		paddingBottom: 2,
 		gap: 8,
 	},
 	heroLeft: {
@@ -833,7 +768,7 @@ const styles = StyleSheet.create({
 	},
 	filterPanel: {
 		paddingHorizontal: 12,
-		paddingVertical: 8,
+		paddingVertical: 4,
 		gap: 6,
 	},
 	searchSectionNoHorizontalPadding: {
@@ -848,7 +783,7 @@ const styles = StyleSheet.create({
 	},
 
 	list: { flex: 1, minHeight: 0 },
-	listContent: { paddingTop: 4, paddingBottom: 10 },
+	listContent: { paddingTop: 4, paddingBottom: 200 },
 	listContentEmpty: { flexGrow: 1 },
 	itemGap: { height: 10 },
 	centerState: {

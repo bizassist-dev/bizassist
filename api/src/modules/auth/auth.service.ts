@@ -18,6 +18,9 @@ import {
 	markUserEmailVerified,
 	createRefreshToken,
 	findRefreshToken,
+	listActiveRefreshTokenDeviceIds,
+	listActiveRefreshTokenSessions,
+	revokeRefreshTokensForDevice,
 	revokeRefreshToken,
 	revokeAllRefreshTokensForUser,
 	bumpUserTokenVersion,
@@ -26,7 +29,9 @@ import {
 	markPasswordResetTicketUsed,
 	deletePasswordResetTicketsForUser,
 } from "@/modules/auth/auth.repository";
+import { parseAuthSessionMetadata, serializeAuthSessionMetadata } from "@/modules/auth/auth.sessionMetadata";
 import {
+	type AuthDeviceSession,
 	type AuthTokens,
 	type AuthUser,
 	type LoginInput,
@@ -47,12 +52,18 @@ import { OtpPurpose } from "@prisma/client";
 export type RequestContext = {
 	ip: string | null;
 	userAgent: string | null;
+	deviceId: string | null;
+	deviceName: string | null;
+	appClient: string | null;
 	correlationId: string | null;
 };
 
 const safeCtx = (ctx?: RequestContext): RequestContext => ({
 	ip: ctx?.ip ?? null,
 	userAgent: ctx?.userAgent ?? null,
+	deviceId: ctx?.deviceId ?? null,
+	deviceName: ctx?.deviceName ?? null,
+	appClient: ctx?.appClient ?? null,
 	correlationId: ctx?.correlationId ?? null,
 });
 
@@ -91,21 +102,60 @@ const buildAuthUser = (user: {
 	tokenVersion: user.tokenVersion,
 });
 
+function normalizeDeviceId(deviceId: string | null | undefined): string | null {
+	const normalized = String(deviceId ?? "").trim();
+	return normalized.length > 0 ? normalized : null;
+}
+
+function shouldRelaxDeviceBinding(ctx?: RequestContext): boolean {
+	return env.nodeEnv === "development" && ctx?.appClient === "expo-go";
+}
+
+async function enforceDeviceCap(
+	userId: string,
+	deviceId: string | null,
+	ctx?: RequestContext,
+	db: Parameters<typeof createRefreshToken>[1] = undefined,
+): Promise<void> {
+	if (!deviceId) return;
+	if (shouldRelaxDeviceBinding(ctx)) return;
+
+	const activeDeviceIds = await listActiveRefreshTokenDeviceIds(userId, db);
+	if (activeDeviceIds.includes(deviceId)) return;
+
+	if (activeDeviceIds.length >= env.authMaxDevicesPerUser) {
+		throw new AppError(StatusCodes.TOO_MANY_REQUESTS, "Device limit reached for this account.", "DEVICE_LIMIT_REACHED", {
+			maxDevices: env.authMaxDevicesPerUser,
+			activeDeviceCount: activeDeviceIds.length,
+		});
+	}
+}
+
 const createRefreshRecord = async (
 	userId: string,
 	refreshToken: string,
+	ctx?: RequestContext,
 	db: Parameters<typeof createRefreshToken>[1] = undefined
 ): Promise<void> => {
 	const now = Date.now();
 	const expiresAt = new Date(now + env.jwtRefreshTokenExpiresInDays * 24 * 60 * 60 * 1000);
+	const deviceId = normalizeDeviceId(ctx?.deviceId);
+
+	await enforceDeviceCap(userId, deviceId, ctx, db);
 
 	await createRefreshToken(
 		{
 			userId,
 			token: refreshToken,
 			expiresAt,
-			ip: null,
-			userAgent: null,
+			ip: ctx?.ip ?? null,
+			userAgent: deviceId
+				? serializeAuthSessionMetadata({
+						deviceId,
+						deviceName: ctx?.deviceName ?? null,
+						clientUserAgent: ctx?.userAgent ?? null,
+				  })
+				: null,
 		},
 		db
 	);
@@ -113,13 +163,19 @@ const createRefreshRecord = async (
 
 const issueTokens = async (
 	user: AuthUser,
+	ctx?: RequestContext,
 	db: Parameters<typeof createRefreshToken>[1] = undefined
 ): Promise<AuthTokens> => {
-	const payload = { sub: user.id, email: user.email, tokenVersion: user.tokenVersion };
+	const payload = {
+		sub: user.id,
+		email: user.email,
+		tokenVersion: user.tokenVersion,
+		deviceId: normalizeDeviceId(ctx?.deviceId) ?? undefined,
+	};
 	const accessToken = signAccessToken(payload);
 	const refreshToken = signRefreshToken(payload);
 
-	await createRefreshRecord(user.id, refreshToken, db);
+	await createRefreshRecord(user.id, refreshToken, ctx, db);
 	return { accessToken, refreshToken };
 };
 
@@ -363,7 +419,7 @@ export const verifyEmailOtp = async (input: VerifyEmailInput, ctx?: RequestConte
 	await deleteEmailOtp({ userId: user.id, purpose }).catch(() => undefined);
 
 	const authUser = buildAuthUser(verifiedUser);
-	const tokens = await issueTokens(authUser);
+	const tokens = await issueTokens(authUser, safeCtx(ctx));
 
 	return { user: authUser, tokens };
 };
@@ -453,17 +509,22 @@ export const loginUser = async (input: LoginInput, ctx?: RequestContext): Promis
 	}
 
 	const user = buildAuthUser(userRecord);
-	const tokens = await issueTokens(user);
+	const tokens = await issueTokens(user, safeCtx(ctx));
 
 	return { user, tokens };
 };
 
 // ========= Refresh Tokens =========
 
-export const refreshTokens = async (refreshToken: string): Promise<{ user: AuthUser; tokens: AuthTokens }> => {
+export const refreshTokens = async (
+	refreshToken: string,
+	ctx?: RequestContext,
+): Promise<{ user: AuthUser; tokens: AuthTokens }> => {
 	if (!refreshToken) {
 		throw new AppError(StatusCodes.UNAUTHORIZED, "Refresh token is required", "REFRESH_TOKEN_REQUIRED");
 	}
+
+	const requestCtx = safeCtx(ctx);
 
 	let payload: any;
 	try {
@@ -504,6 +565,18 @@ export const refreshTokens = async (refreshToken: string): Promise<{ user: AuthU
 			throw new AppError(StatusCodes.UNAUTHORIZED, "Refresh token expired", "REFRESH_TOKEN_EXPIRED");
 		}
 
+		const requestDeviceId = normalizeDeviceId(requestCtx.deviceId);
+		const storedSessionMetadata = parseAuthSessionMetadata(stored.userAgent);
+		const storedDeviceId = storedSessionMetadata?.deviceId ?? normalizeDeviceId(stored.userAgent);
+		if (!shouldRelaxDeviceBinding(requestCtx) && storedDeviceId && requestDeviceId !== storedDeviceId) {
+			await revokeRefreshToken(userId, refreshToken, tx).catch(() => undefined);
+			throw new AppError(
+				StatusCodes.UNAUTHORIZED,
+				"Refresh token used from a different device",
+				"REFRESH_TOKEN_DEVICE_MISMATCH",
+			);
+		}
+
 		const userRecord = await findUserById(userId, tx);
 		if (!userRecord || !userRecord.isActive) {
 			await revokeRefreshToken(userId, refreshToken, tx).catch(() => undefined);
@@ -516,7 +589,7 @@ export const refreshTokens = async (refreshToken: string): Promise<{ user: AuthU
 		}
 
 		const user = buildAuthUser(userRecord);
-		const tokens = await issueTokens(user, tx);
+		const tokens = await issueTokens(user, requestCtx, tx);
 
 		const revokedCount = await revokeRefreshToken(userId, refreshToken, tx);
 		if (revokedCount === 0) {
@@ -548,6 +621,70 @@ export const logoutAllSessions = async (userId: string, ctx?: RequestContext): P
 
 	await revokeAllRefreshTokensForUser(userId);
 	await bumpUserTokenVersion(userId);
+};
+
+export const listDeviceSessions = async (userId: string, ctx?: RequestContext): Promise<AuthDeviceSession[]> => {
+	const requestCtx = safeCtx(ctx);
+	const currentDeviceId = normalizeDeviceId(requestCtx.deviceId);
+	const sessions = await listActiveRefreshTokenSessions(userId);
+	const byDevice = new Map<string, AuthDeviceSession>();
+
+	for (const session of sessions) {
+		const metadata = parseAuthSessionMetadata(session.userAgent);
+		if (!metadata?.deviceId) continue;
+
+		const existing = byDevice.get(metadata.deviceId);
+		if (!existing) {
+			byDevice.set(metadata.deviceId, {
+				deviceId: metadata.deviceId,
+				deviceName: metadata.deviceName,
+				lastSeenAt: session.updatedAt.toISOString(),
+				firstIssuedAt: session.createdAt.toISOString(),
+				expiresAt: session.expiresAt.toISOString(),
+				sessionCount: 1,
+				isCurrent: metadata.deviceId === currentDeviceId,
+			});
+			continue;
+		}
+
+		existing.sessionCount += 1;
+		if (session.updatedAt.toISOString() > existing.lastSeenAt) {
+			existing.lastSeenAt = session.updatedAt.toISOString();
+		}
+		if (session.createdAt.toISOString() < existing.firstIssuedAt) {
+			existing.firstIssuedAt = session.createdAt.toISOString();
+		}
+		if (session.expiresAt.toISOString() > existing.expiresAt) {
+			existing.expiresAt = session.expiresAt.toISOString();
+		}
+		existing.deviceName = existing.deviceName ?? metadata.deviceName;
+		existing.isCurrent = existing.isCurrent || metadata.deviceId === currentDeviceId;
+	}
+
+	return Array.from(byDevice.values()).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+};
+
+export const revokeDeviceSessions = async (
+	userId: string,
+	deviceId: string,
+	ctx?: RequestContext,
+): Promise<{ revokedCount: number }> => {
+	const requestCtx = safeCtx(ctx);
+	const normalizedDeviceId = normalizeDeviceId(deviceId);
+	if (!normalizedDeviceId) {
+		throw new AppError(StatusCodes.BAD_REQUEST, "Device id is required", "VALIDATION_ERROR");
+	}
+
+	const revokedCount = await revokeRefreshTokensForDevice(userId, normalizedDeviceId);
+	if (revokedCount <= 0) {
+		throw new AppError(StatusCodes.NOT_FOUND, "Device session not found", "DEVICE_SESSION_NOT_FOUND");
+	}
+
+	if (requestCtx.deviceId && normalizedDeviceId === requestCtx.deviceId) {
+		await bumpUserTokenVersion(userId).catch(() => undefined);
+	}
+
+	return { revokedCount };
 };
 
 // ============================================================

@@ -83,6 +83,8 @@ export const FIELD_LIMITS = {
 	idempotencyKeyMin: 12,
 	refreshToken: 5000,
 	refreshTokenMin: 20,
+	deviceId: 128,
+	deviceIdMin: 8,
 	resetTicket: 500,
 	resetTicketMin: 10,
 	mediaBucket: 80,

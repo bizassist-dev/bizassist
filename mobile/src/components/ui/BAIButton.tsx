@@ -43,6 +43,7 @@ const MODE_BY_VARIANT: Record<BAIButtonVariant, PaperButtonMode> = {
 	subtle: "contained-tonal",
 	outline: "outlined",
 	ghost: "text",
+	inverse: "contained",
 };
 
 type Props = Omit<React.ComponentProps<typeof Button>, "children" | "icon"> & {

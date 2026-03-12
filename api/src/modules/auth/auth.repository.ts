@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { env } from "@/core/config/env";
 import type { Prisma, User, RefreshToken, EmailOtp, PasswordResetTicket } from "@prisma/client";
 import { OtpPurpose, UserRole } from "@prisma/client";
+import { parseAuthSessionMetadata } from "@/modules/auth/auth.sessionMetadata";
 
 /**
  * Internal helpers
@@ -266,6 +267,98 @@ export const findRefreshToken = async (
 	return db.refreshToken.findUnique({
 		where: { userId_tokenHash: { userId, tokenHash: hashRefreshToken(token) } },
 	});
+};
+
+export const listActiveRefreshTokenDeviceIds = async (userId: string, db: DbClient = prisma): Promise<string[]> => {
+	const records = await db.refreshToken.findMany({
+		where: {
+			userId,
+			revokedAt: null,
+			expiresAt: { gt: new Date() },
+			userAgent: { not: null },
+		},
+		select: { userAgent: true },
+		distinct: ["userAgent"],
+	});
+
+	const deviceIds = records
+		.map((record) => parseAuthSessionMetadata(record.userAgent)?.deviceId ?? null)
+		.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+	return Array.from(new Set(deviceIds));
+};
+
+export const listActiveRefreshTokenSessions = async (
+	userId: string,
+	db: DbClient = prisma,
+): Promise<Array<Pick<RefreshToken, "id" | "userAgent" | "createdAt" | "updatedAt" | "expiresAt">>> => {
+	return db.refreshToken.findMany({
+		where: {
+			userId,
+			revokedAt: null,
+			expiresAt: { gt: new Date() },
+		},
+		select: {
+			id: true,
+			userAgent: true,
+			createdAt: true,
+			updatedAt: true,
+			expiresAt: true,
+		},
+		orderBy: { updatedAt: "desc" },
+	});
+};
+
+export const revokeRefreshTokensForDevice = async (
+	userId: string,
+	deviceId: string,
+	db: DbClient = prisma,
+): Promise<number> => {
+	const activeTokens = await db.refreshToken.findMany({
+		where: {
+			userId,
+			revokedAt: null,
+			expiresAt: { gt: new Date() },
+		},
+		select: {
+			id: true,
+			userAgent: true,
+		},
+	});
+
+	const tokenIds = activeTokens
+		.filter((token) => parseAuthSessionMetadata(token.userAgent)?.deviceId === deviceId)
+		.map((token) => token.id);
+
+	if (tokenIds.length === 0) return 0;
+
+	const result = await db.refreshToken.updateMany({
+		where: {
+			userId,
+			id: { in: tokenIds },
+			revokedAt: null,
+		},
+		data: { revokedAt: new Date() },
+	});
+
+	return result.count ?? 0;
+};
+
+export const hasActiveRefreshTokenForDevice = async (
+	userId: string,
+	deviceId: string,
+	db: DbClient = prisma,
+): Promise<boolean> => {
+	const activeTokens = await db.refreshToken.findMany({
+		where: {
+			userId,
+			revokedAt: null,
+			expiresAt: { gt: new Date() },
+		},
+		select: { userAgent: true },
+	});
+
+	return activeTokens.some((token) => parseAuthSessionMetadata(token.userAgent)?.deviceId === deviceId);
 };
 
 export const deleteRefreshToken = async (userId: string, token: string, db: DbClient = prisma): Promise<void> => {

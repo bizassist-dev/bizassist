@@ -448,7 +448,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 	const optionMainInsetRight = useRef(new Animated.Value(0)).current;
 
 	const backRoute = mode === "settings" ? "/(app)/(tabs)/settings/modifiers" : "/(app)/(tabs)/inventory/modifiers";
-	const outline = theme.colors.outlineVariant ?? theme.colors.outline;
+	const outline = theme.colors.outline;
 	const controlSurfaceInteractive = useMemo(
 		() => ({
 			borderColor: outline,
@@ -456,18 +456,6 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 		}),
 		[outline, theme.colors.surface, theme.colors.surfaceDisabled, theme.colors.surfaceVariant],
 	);
-	const archiveButtonSurface = useMemo(
-		() => ({
-			borderColor: theme.dark ? baiColors.red[800] : theme.colors.error,
-			backgroundColor: theme.dark
-				? baiColors.red[900]
-				: (theme.colors.errorContainer ?? theme.colors.surfaceVariant ?? theme.colors.surface),
-		}),
-		[theme.dark, theme.colors.error, theme.colors.errorContainer, theme.colors.surface, theme.colors.surfaceVariant],
-	);
-	const archiveButtonTextColor = theme.dark
-		? baiColors.red[200]
-		: (theme.colors.onErrorContainer ?? theme.colors.error);
 
 	useEffect(() => {
 		void queryClient.prefetchQuery({
@@ -969,22 +957,6 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 		[activePriceRowKey],
 	);
 
-	const onChangePriceMinor = useCallback((rowIndex: number, nextMinor: number) => {
-		setOptions((prev) => {
-			const row = prev[rowIndex];
-			if (!row) return prev;
-
-			const currentMinor = toSafeMinor(row.deltaMinor);
-			if (nextMinor === currentMinor) {
-				return prev;
-			}
-
-			const next = [...prev];
-			next[rowIndex] = { ...row, deltaMinor: nextMinor };
-			return ensureTrailingPlaceholderOption(next);
-		});
-	}, []);
-
 	const setRowSoldOutByKey = useCallback((rowKey: string, nextIsSoldOut: boolean) => {
 		setOptions((prev) => {
 			const rowIndex = prev.findIndex((row) => row.key === rowKey);
@@ -1173,7 +1145,6 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 					onActionOption={isArchivedTab ? onRestoreOption : onArchiveOption}
 					onChangeOptionName={onChangeOptionName}
 					onOpenPriceKeyboard={openOptionPriceKeyboard}
-					onChangePriceMinor={onChangePriceMinor}
 				/>
 			);
 		},
@@ -1190,7 +1161,6 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 			onArchiveOption,
 			onChangeOptionName,
 			openOptionPriceKeyboard,
-			onChangePriceMinor,
 			onRestoreOption,
 			onToggleDeleteReveal,
 			optionMainInsetRight,
@@ -1527,21 +1497,9 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 												</BAIText>
 											) : null}
 											{showArchivedDestructiveAction ? (
-												<Pressable
-													onPress={openArchiveConfirm}
-													style={({ pressed }) => [
-														styles.archiveButton,
-														archiveButtonSurface,
-														pressed ? { opacity: 0.92 } : null,
-													]}
-												>
-													<BAIText
-														variant='subtitle'
-														style={[styles.archiveButtonText, { color: archiveButtonTextColor }]}
-													>
-														{destructiveActionLabel}
-													</BAIText>
-												</Pressable>
+												<BAIButton variant='outline' intent='danger' onPress={openArchiveConfirm} style={styles.archiveButton}>
+													{destructiveActionLabel}
+												</BAIButton>
 											) : null}
 										</ScrollView>
 									) : (
@@ -1564,21 +1522,9 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 												</BAIText>
 											) : null}
 											{showActiveDestructiveAction ? (
-												<Pressable
-													onPress={openArchiveConfirm}
-													style={({ pressed }) => [
-														styles.archiveButton,
-														archiveButtonSurface,
-														pressed ? { opacity: 0.92 } : null,
-													]}
-												>
-													<BAIText
-														variant='subtitle'
-														style={[styles.archiveButtonText, { color: archiveButtonTextColor }]}
-													>
-														{destructiveActionLabel}
-													</BAIText>
-												</Pressable>
+												<BAIButton variant='outline' intent='danger' onPress={openArchiveConfirm} style={styles.archiveButton}>
+													{destructiveActionLabel}
+												</BAIButton>
 											) : null}
 										</ScrollView>
 									)
@@ -1693,11 +1639,11 @@ const styles = StyleSheet.create({
 	topSection: { gap: 8, paddingBottom: 8 },
 	modifierSetConfigContainer: {
 		marginHorizontal: 0,
-		borderWidth: StyleSheet.hairlineWidth,
+		borderWidth: 1,
 		borderRadius: 14,
-		paddingHorizontal: 10,
+		paddingHorizontal: 8,
 		paddingTop: 10,
-		paddingBottom: 8,
+		paddingBottom: 14,
 		gap: 8,
 	},
 	modifiersHeader: {
@@ -1715,7 +1661,7 @@ const styles = StyleSheet.create({
 	},
 	applySetRow: {
 		minHeight: 46,
-		borderWidth: StyleSheet.hairlineWidth,
+		borderWidth: 1,
 		borderRadius: 12,
 		paddingHorizontal: 10,
 		paddingVertical: 8,
@@ -1727,7 +1673,7 @@ const styles = StyleSheet.create({
 	rulesRow: { flexDirection: "row", gap: 8, paddingTop: 4, paddingBottom: 0 },
 	ruleInput: { flex: 1 },
 	advancedRulesContainer: {
-		borderWidth: StyleSheet.hairlineWidth,
+		borderWidth: 1,
 		borderRadius: 12,
 		paddingHorizontal: 8,
 		paddingTop: 2,
@@ -1776,17 +1722,8 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 	},
 	archiveButton: {
-		borderWidth: StyleSheet.hairlineWidth,
-		borderRadius: 12,
-		minHeight: 46,
-		alignItems: "center",
-		justifyContent: "center",
-		paddingHorizontal: 10,
 		marginTop: 24,
 		marginHorizontal: 10,
-	},
-	archiveButtonText: {
-		fontWeight: "500",
 	},
 	optionInlineRow: {
 		flexDirection: "row",

@@ -20,6 +20,7 @@ import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { InventoryMovementRow } from "@/modules/inventory/components/InventoryMovementRow";
 import type { InventoryMovement, InventoryProductDetail } from "@/modules/inventory/inventory.types";
 import { formatOnHand } from "@/modules/inventory/inventory.selectors";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 
 function extractApiErrorMessage(err: any): string {
@@ -265,8 +266,7 @@ export default function InventoryProductActivityScreen() {
 
 	const title = product?.name?.trim() ? product?.name : "Item";
 	const imageUri = useMemo(() => {
-		const raw = (product as any)?.primaryImageUrl;
-		return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+		return toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt);
 	}, [product]);
 	const hasImage = Boolean(imageUri);
 	const productType = (product as any)?.type;

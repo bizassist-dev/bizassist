@@ -58,6 +58,18 @@ function safeString(v: unknown): string {
 	return typeof v === "string" ? v : String(v ?? "");
 }
 
+function validateOptionalPosTileLabel(label: string): string | null {
+	const trimmed = label.trim();
+	if (!trimmed) return null;
+	if (trimmed.length < FIELD_LIMITS.posTileLabelMin) {
+		return `Use at least ${FIELD_LIMITS.posTileLabelMin} characters.`;
+	}
+	if (!posTileLabelRegex.test(trimmed)) {
+		return "Letters and numbers only.";
+	}
+	return null;
+}
+
 export default function PosTilePhoneScreen({ routeScope = "inventory" }: { routeScope?: InventoryRouteScope }) {
 	const router = useRouter();
 	const theme = useTheme();
@@ -163,9 +175,12 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 		if (!lockNav()) return;
 
 		const trimmedLabel = tileLabel.trim();
-		if (trimmedLabel && !posTileLabelRegex.test(trimmedLabel)) {
+		const tileLabelError = validateOptionalPosTileLabel(trimmedLabel);
+		if (tileLabelError) {
+			setMediaError(tileLabelError);
 			return;
 		}
+		setMediaError(null);
 
 		patch({
 			posTileLabel: trimmedLabel,
@@ -284,10 +299,9 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 		? theme.colors.primary
 		: theme.colors.error;
 	const isTileLabelValid = useMemo(() => {
-		const trimmed = tileLabel.trim();
-		if (!trimmed) return true;
-		return posTileLabelRegex.test(trimmed);
+		return validateOptionalPosTileLabel(tileLabel) == null;
 	}, [tileLabel]);
+	const tileLabelErrorText = useMemo(() => validateOptionalPosTileLabel(tileLabel), [tileLabel]);
 	const hasChanges = useMemo(() => {
 		const currentLabel = tileLabel.trim();
 		const initialLabel = initialTileLabelRef.current.trim();
@@ -330,9 +344,9 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 								placeholder={tileLabelPlaceholder}
 								disabled={isUiDisabled}
 							/>
-							{!isTileLabelValid ? (
+							{!isTileLabelValid && tileLabelErrorText ? (
 								<BAIText variant='caption' style={{ color: theme.colors.error }}>
-									Letters and Numbers Only.
+									{tileLabelErrorText}
 								</BAIText>
 							) : null}
 

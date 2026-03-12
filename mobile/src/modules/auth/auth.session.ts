@@ -3,6 +3,7 @@
 
 import axios from "axios";
 import { resolveBaseUrl } from "@/lib/api/baseUrl";
+import { getAuthClientType, getAuthDeviceName, getOrCreateAuthDeviceId } from "@/modules/auth/auth.device";
 import { clearAuthTokens, getAuthTokens, saveAuthTokens } from "@/modules/auth/auth.storage";
 import type { ApiEnvelope, AuthPayload } from "@/modules/auth/auth.types";
 
@@ -52,7 +53,17 @@ export const refreshSessionSingleFlight = async (): Promise<AuthPayload> => {
 	const startedWith = refreshToken;
 
 	refreshInFlight = (async () => {
-		const res = await refreshClient.post<ApiEnvelope<AuthPayload>>("/auth/refresh", { refreshToken });
+		const res = await refreshClient.post<ApiEnvelope<AuthPayload>>(
+			"/auth/refresh",
+			{ refreshToken },
+			{
+				headers: {
+					"X-Device-Id": getOrCreateAuthDeviceId(),
+					"X-Device-Name": getAuthDeviceName(),
+					"X-App-Client": getAuthClientType(),
+				},
+			},
+		);
 		const payload = res?.data?.data;
 		if (!payload) {
 			throw new Error("Invalid refresh response");

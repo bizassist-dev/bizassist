@@ -34,6 +34,22 @@ export interface RefreshInput {
 	refreshToken: string;
 }
 
+export interface AuthDeviceSession {
+	deviceId: string;
+	deviceName: string | null;
+	lastSeenAt: string;
+	firstIssuedAt: string;
+	expiresAt: string;
+	sessionCount: number;
+	isCurrent: boolean;
+}
+
+export interface AuthDeviceSessionsPayload {
+	maxDevices: number;
+	activeDeviceCount: number;
+	devices: AuthDeviceSession[];
+}
+
 export interface AuthUser {
 	id: string;
 	email: string;

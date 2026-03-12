@@ -16,7 +16,7 @@ import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-c
 
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { queryClient } from "@/lib/queryClient";
-import { storage } from "@/lib/storage/mmkv";
+import { MMKVKeys, mmkv } from "@/lib/storage/mmkv";
 import { AppBusyProvider } from "@/providers/AppBusyProvider";
 import { AppToastProvider } from "@/providers/AppToastProvider";
 import { baiDarkTheme, baiLightTheme } from "@/theme/baiTheme";
@@ -30,20 +30,39 @@ type DisplayModeContextValue = {
 	colorScheme: "light" | "dark"; // resolved scheme actually applied
 };
 
-const DISPLAY_MODE_KEY = "appearance.displayMode";
-
 const DisplayModeContext = createContext<DisplayModeContextValue | undefined>(undefined);
 
 function isDisplayMode(x: unknown): x is DisplayMode {
 	return x === "light" || x === "dark" || x === "system";
 }
 
+function readPersistedDisplayMode(): DisplayMode | null {
+	const canonical = mmkv.getString(MMKVKeys.displayMode);
+	if (isDisplayMode(canonical)) return canonical;
+
+	const legacyAppearance = mmkv.getString(MMKVKeys.legacyAppearanceDisplayMode);
+	if (isDisplayMode(legacyAppearance)) return legacyAppearance;
+	if (legacyAppearance === "google") return "system";
+
+	const legacyUiTheme = mmkv.getString(MMKVKeys.legacyUiTheme);
+	if (legacyUiTheme === "light" || legacyUiTheme === "dark") return legacyUiTheme;
+
+	return null;
+}
+
+function persistDisplayMode(mode: DisplayMode): void {
+	mmkv.set(MMKVKeys.displayMode, mode);
+	mmkv.remove(MMKVKeys.legacyAppearanceDisplayMode);
+	mmkv.remove(MMKVKeys.legacyUiTheme);
+}
+
 function getInitialDisplayMode(): DisplayMode {
 	try {
-		const saved = storage.getString(DISPLAY_MODE_KEY);
-		if (isDisplayMode(saved)) return saved;
-		// Backward-compat: prior builds used "google" as a variant of system.
-		if (saved === "google") return "system";
+		const saved = readPersistedDisplayMode();
+		if (saved) {
+			persistDisplayMode(saved);
+			return saved;
+		}
 	} catch {
 		// Non-fatal: fall back to system
 	}
@@ -65,7 +84,7 @@ export function BAIAppProviders({ children }: Props) {
 
 		// Persist best-effort; never block UI.
 		try {
-			storage.set(DISPLAY_MODE_KEY, mode);
+			persistDisplayMode(mode);
 		} catch {
 			// Non-fatal
 		}

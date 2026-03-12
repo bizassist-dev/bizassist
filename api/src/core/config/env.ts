@@ -67,6 +67,7 @@ export type Env = {
 
 	authRefreshAttemptsPerWindow: number;
 	authRefreshWindowMs: number;
+	authMaxDevicesPerUser: number;
 
 	// Rate limiting (OTP verify)
 	authVerifyEmailAttemptsPerWindow: number;
@@ -228,6 +229,7 @@ export const env: Env = {
 		"AUTH_REFRESH_ATTEMPTS_PER_WINDOW",
 	),
 	authRefreshWindowMs: toInt(process.env.AUTH_REFRESH_WINDOW_MS, 15 * 60 * 1000, "AUTH_REFRESH_WINDOW_MS"),
+	authMaxDevicesPerUser: toInt(process.env.AUTH_MAX_DEVICES_PER_USER, 5, "AUTH_MAX_DEVICES_PER_USER"),
 
 	// Rate limiting (OTP verify)
 	authVerifyEmailAttemptsPerWindow: toInt(

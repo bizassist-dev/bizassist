@@ -1,11 +1,12 @@
 // BizAssist_mobile path: src/modules/inventory/components/InventoryRow.tsx
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Image as ExpoImage } from "expo-image";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 import { useTheme } from "react-native-paper";
 
 import { BAIText } from "@/components/ui/BAIText";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { baiSemanticColors } from "@/theme/baiColors";
 import {
 	formatOnHand,
@@ -40,6 +41,7 @@ export type InventoryRowProps = {
 	 */
 	categoryColor?: string | null;
 	categoryIsActive?: boolean;
+	attentionPulseKey?: number;
 };
 
 function InventoryRowBase({
@@ -50,13 +52,15 @@ function InventoryRowBase({
 	categoryColor,
 	categoryIsActive,
 	showOnHandUnit = true,
+	attentionPulseKey,
 }: InventoryRowProps) {
 	const theme = useTheme();
 	const { currencyCode } = useActiveBusinessMeta();
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const disabledThumbBorderColor = theme.dark ? "#F5F5F5" : "#111111";
 	const surfaceAlt = theme.colors.surfaceVariant ?? theme.colors.surface;
-	const pressedBg = theme.dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)";
+	const highlightBg = theme.dark ? "rgba(76, 133, 255, 0.24)" : "rgba(66, 133, 244, 0.14)";
+	const highlightBorderColor = theme.colors.primary;
 
 	const tracked = item.trackInventory;
 	const isServiceItem =
@@ -87,15 +91,8 @@ function InventoryRowBase({
 		return null;
 	}, [categoryColor, item.category?.color]);
 
-	const activeStyle = useMemo(() => {
-		if (!active) return null;
-
-		// subtle, theme-safe highlight (no custom colors)
-		return {
-			backgroundColor: theme.colors.surfaceVariant,
-			borderColor: theme.colors.outline,
-		};
-	}, [active, theme.colors.outline, theme.colors.surfaceVariant]);
+	const rowBaseBackgroundColor = active ? theme.colors.surfaceVariant : surfaceAlt;
+	const rowBaseBorderColor = active ? theme.colors.outline : borderColor;
 
 	const categoryDotStyle = useMemo(() => {
 		const fill = resolvedCategoryColor ? resolvedCategoryColor : "transparent";
@@ -134,7 +131,7 @@ function InventoryRowBase({
 
 	const warningColor = theme.dark ? baiSemanticColors.warning.dark : baiSemanticColors.warning.main;
 	const statusColor = isServiceItem ? undefined : outOfStock ? theme.colors.error : low ? warningColor : undefined;
-	const imageUri = String(item.primaryImageUrl ?? "").trim();
+	const imageUri = toCacheBustedImageUri(item.primaryImageUrl, (item as any)?.updatedAt);
 	const posTileColor = typeof item.posTileColor === "string" ? item.posTileColor.trim() : "";
 	const normalizedTileColor = posTileColor.toLowerCase();
 	const imageKey = useMemo(() => (imageUri ? imageUri.split("?")[0] : ""), [imageUri]);
@@ -143,7 +140,9 @@ function InventoryRowBase({
 		isServiceItem && normalizedTileColor.length > 0 && normalizedTileColor === DEFAULT_SERVICE_TILE_COLOR;
 	const showColorTile = item.posTileMode === "COLOR" && !!posTileColor && !isDefaultServiceTile;
 	const showPlaceholder = !showImageTile && !showColorTile;
-	const placeholderBg = theme.colors.surfaceDisabled ?? theme.colors.surfaceVariant ?? theme.colors.surface;
+	const placeholderBg = theme.dark
+		? "#24262C"
+		: (theme.colors.surfaceDisabled ?? theme.colors.surfaceVariant ?? theme.colors.surface);
 	const placeholderTextColor = theme.colors.onSurfaceVariant ?? theme.colors.onSurface;
 	const [thumbLoaded, setThumbLoaded] = useState(false);
 	const lastImageKeyRef = useRef<string | null>(null);
@@ -193,86 +192,146 @@ function InventoryRowBase({
 
 	const showLoadingPlaceholder = showImageTile && !thumbLoaded;
 	const showThumbnailInitials = (!showImageTile || showLoadingPlaceholder) && thumbnailInitials.length > 0;
+	const attentionValue = useRef(new Animated.Value(0)).current;
+
+	useEffect(() => {
+		if (!attentionPulseKey) return;
+
+		attentionValue.stopAnimation();
+		attentionValue.setValue(0);
+		Animated.sequence([
+			Animated.timing(attentionValue, {
+				toValue: 1,
+				duration: 220,
+				easing: Easing.out(Easing.cubic),
+				useNativeDriver: false,
+			}),
+			Animated.timing(attentionValue, {
+				toValue: 0,
+				duration: 900,
+				easing: Easing.inOut(Easing.cubic),
+				useNativeDriver: false,
+			}),
+		]).start();
+	}, [attentionPulseKey, attentionValue]);
+
+	const animatedRowStyle = useMemo(
+		() => ({
+			backgroundColor: attentionValue.interpolate({
+				inputRange: [0, 1],
+				outputRange: [rowBaseBackgroundColor, highlightBg],
+			}),
+			borderColor: attentionValue.interpolate({
+				inputRange: [0, 1],
+				outputRange: [rowBaseBorderColor, highlightBorderColor],
+			}),
+			opacity: disabled ? 0.45 : 1,
+			transform: [
+				{
+					translateY: attentionValue.interpolate({
+						inputRange: [0, 1],
+						outputRange: [10, 0],
+					}),
+				},
+				{
+					scale: attentionValue.interpolate({
+						inputRange: [0, 1],
+						outputRange: [0.985, 1],
+					}),
+				},
+			],
+		}),
+		[
+			attentionValue,
+			disabled,
+			highlightBg,
+			highlightBorderColor,
+			rowBaseBackgroundColor,
+			rowBaseBorderColor,
+		],
+	);
 
 	return (
-		<Pressable
-			onPress={onPress}
-			disabled={disabled}
-			style={({ pressed }) => [
-				styles.row,
-				{ borderColor, backgroundColor: pressed && !disabled ? pressedBg : surfaceAlt },
-				activeStyle,
-				disabled && { opacity: 0.45 },
-			]}
-		>
-			<View style={styles.rowMain}>
-				<View
-					style={[
-						styles.thumbnail,
-						{ borderColor: disabled ? disabledThumbBorderColor : borderColor },
-						showColorTile && { backgroundColor: posTileColor },
-						(showPlaceholder || showLoadingPlaceholder) && { backgroundColor: placeholderBg },
-					]}
-				>
-					{showImageTile ? (
-						<ExpoImage
-							source={{ uri: imageUri }}
-							style={[styles.thumbnailImage, { opacity: thumbLoaded ? 1 : 0 }]}
-							contentFit='cover'
-							cachePolicy='memory-disk'
-							transition={0}
-							priority='high'
-							recyclingKey={item.id}
-							onLoad={() => setThumbLoaded(true)}
-							onError={() => setThumbLoaded(false)}
-						/>
-					) : null}
-					{showThumbnailInitials ? (
-						<BAIText variant='body' style={{ color: placeholderTextColor }}>
-							{thumbnailInitials}
-						</BAIText>
-					) : null}
-				</View>
+		<Animated.View style={[styles.rowShell, animatedRowStyle]}>
+			<Pressable
+				onPress={onPress}
+				disabled={disabled}
+				style={({ pressed }) => [styles.rowPressable, pressed && !disabled ? styles.rowPressed : null]}
+			>
+				<View style={styles.rowMain}>
+					<View
+						style={[
+							styles.thumbnail,
+							{ borderColor: disabled ? disabledThumbBorderColor : borderColor },
+							showColorTile && { backgroundColor: posTileColor },
+							(showPlaceholder || showLoadingPlaceholder) && { backgroundColor: placeholderBg },
+						]}
+					>
+						{showImageTile ? (
+							<ExpoImage
+								source={{ uri: imageUri }}
+								style={[styles.thumbnailImage, { opacity: thumbLoaded ? 1 : 0 }]}
+								contentFit='cover'
+								cachePolicy='memory-disk'
+								transition={0}
+								priority='high'
+								recyclingKey={item.id}
+								onLoad={() => setThumbLoaded(true)}
+								onError={() => setThumbLoaded(false)}
+							/>
+						) : null}
+						{showThumbnailInitials ? (
+							<BAIText variant='body' style={{ color: placeholderTextColor }}>
+								{thumbnailInitials}
+							</BAIText>
+						) : null}
+					</View>
 
-				<View style={styles.left}>
-					<BAIText variant='subtitle' numberOfLines={1}>
-						{item.name}
-					</BAIText>
-
-					<View style={styles.metaBlock}>
-						<View style={[styles.categoryDot, categoryDotStyle]} />
-						<BAIText variant='caption' numberOfLines={1} style={styles.metaValue}>
-							{categoryLabel}
+					<View style={styles.left}>
+						<BAIText variant='subtitle' numberOfLines={1}>
+							{item.name}
 						</BAIText>
+
+						<View style={styles.metaBlock}>
+							<View style={[styles.categoryDot, categoryDotStyle]} />
+							<BAIText variant='caption' numberOfLines={1} style={styles.metaValue}>
+								{categoryLabel}
+							</BAIText>
+						</View>
 					</View>
 				</View>
-			</View>
 
-			<View style={styles.right}>
-				<BAIText variant='subtitle' style={statusColor ? { color: statusColor } : undefined}>
-					{rightPrimaryText}
-				</BAIText>
+				<View style={styles.right}>
+					<BAIText variant='subtitle' style={statusColor ? { color: statusColor } : undefined}>
+						{rightPrimaryText}
+					</BAIText>
 
-				<BAIText variant='caption' muted={!statusColor} style={statusColor ? { color: statusColor } : undefined}>
-					{rightSecondaryText}
-				</BAIText>
-			</View>
-		</Pressable>
+					<BAIText variant='caption' muted={!statusColor} style={statusColor ? { color: statusColor } : undefined}>
+						{rightSecondaryText}
+					</BAIText>
+				</View>
+			</Pressable>
+		</Animated.View>
 	);
 }
 
 export const InventoryRow = memo(InventoryRowBase);
 
 const styles = StyleSheet.create({
-	row: {
+	rowShell: {
+		borderWidth: 1,
+		borderRadius: 12,
+	},
+	rowPressable: {
 		paddingHorizontal: 12,
 		paddingVertical: 8,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		borderWidth: 1,
-		borderRadius: 12,
 		gap: 12,
+	},
+	rowPressed: {
+		opacity: 0.84,
 	},
 	rowMain: {
 		flexDirection: "row",

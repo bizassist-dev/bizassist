@@ -67,7 +67,7 @@ export function InventorySearchBar({
 			maxLength={FIELD_LIMITS.search}
 			height={INPUT_HEIGHT}
 			searchAccessibilityLabel='Search inventory'
-			scanAccessibilityLabel='Scan barcode'
+			scanAccessibilityLabel='Scan barcode or QR code'
 			style={styles.row}
 			searchStyle={styles.search}
 			scanButtonStyle={styles.scanBtn}

@@ -1,7 +1,7 @@
 // BizAssist_mobile
 // path: src/modules/inventory/services/screens/InventoryServicePhotoScreen.tsx
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
@@ -20,6 +20,7 @@ import { useAppBusy } from "@/hooks/useAppBusy";
 import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 import { runGovernedBack } from "@/modules/inventory/navigation.governance";
 import { requestCameraAccess } from "@/modules/inventory/inventory.permissions";
+import { patchProductImageCaches } from "@/modules/inventory/inventory.cache";
 import {
 	inventoryScopeRoot,
 	mapInventoryRouteToScope,
@@ -27,8 +28,10 @@ import {
 } from "@/modules/inventory/navigation.scope";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { toMediaDomainError } from "@/modules/media/media.errors";
 import { catalogKeys } from "@/modules/catalog/catalog.queries";
+import { patchPosCatalogImageCaches } from "@/modules/pos/pos.catalog.cache";
 import {
 	LOCAL_URI_KEY,
 	POS_TILE_CROP_ROUTE,
@@ -51,8 +54,9 @@ export default function InventoryServicePhotoScreen({
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 	const rootRoute = useMemo(() => inventoryScopeRoot(routeScope), [routeScope]);
 
-	const params = useLocalSearchParams();
+	const params = useLocalSearchParams<{ id?: string; localUri?: string }>();
 	const productId = String(params.id ?? "");
+	const incomingLocalImageUri = useMemo(() => String(params[LOCAL_URI_KEY] ?? "").trim(), [params]);
 	const detailRoute = useMemo(
 		() => (productId ? toScopedRoute(`/(app)/(tabs)/inventory/services/${encodeURIComponent(productId)}`) : rootRoute),
 		[productId, rootRoute, toScopedRoute],
@@ -78,8 +82,20 @@ export default function InventoryServicePhotoScreen({
 	});
 
 	const service = serviceQuery.data;
-	const hasImage = Boolean(service?.primaryImageUrl && service.primaryImageUrl.trim().length > 0);
-	const imageUri = hasImage ? (service!.primaryImageUrl as string) : "";
+	const [optimisticImageUri, setOptimisticImageUri] = useState("");
+
+	useEffect(() => {
+		if (!incomingLocalImageUri) return;
+		setOptimisticImageUri(incomingLocalImageUri);
+		(router as any).setParams?.({ [LOCAL_URI_KEY]: undefined });
+	}, [incomingLocalImageUri, router]);
+
+	const remoteImageUri = useMemo(
+		() => toCacheBustedImageUri(service?.primaryImageUrl, (service as any)?.updatedAt),
+		[service],
+	);
+	const imageUri = optimisticImageUri || remoteImageUri;
+	const hasImage = imageUri.length > 0;
 	const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -164,10 +180,22 @@ export default function InventoryServicePhotoScreen({
 		await withBusy("Removing photo…", async () => {
 			try {
 				await inventoryApi.removeProductImage(productId);
+				const nextUpdatedAt = new Date().toISOString();
+				setOptimisticImageUri("");
+				patchProductImageCaches(qc, productId, {
+					primaryImageUrl: "",
+					updatedAt: nextUpdatedAt,
+				});
+				patchPosCatalogImageCaches(qc, {
+					productId,
+					primaryImageUrl: "",
+					updatedAt: nextUpdatedAt,
+				});
 
 				await Promise.all([
 					qc.invalidateQueries({ queryKey: inventoryKeys.productDetail(productId) }),
 					qc.invalidateQueries({ queryKey: inventoryKeys.productsRoot() }),
+					qc.invalidateQueries({ queryKey: inventoryKeys.productsInfiniteRoot() }),
 					qc.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
 					qc.invalidateQueries({ queryKey: catalogKeys.all }),
 				]);

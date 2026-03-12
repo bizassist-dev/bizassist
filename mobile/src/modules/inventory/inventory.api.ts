@@ -33,6 +33,10 @@ type ListProductsParams = {
 	isActive?: boolean;
 };
 
+type RequestOptions = {
+	signal?: AbortSignal;
+};
+
 function toTrimmedString(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
@@ -463,8 +467,11 @@ function normalizeMovement(input: any): InventoryMovement {
 }
 
 export const inventoryApi = {
-	async listProducts(params?: ListProductsParams): Promise<ListProductsResponse> {
-		const res = await apiClient.get<ApiEnvelope<ListProductsResponse>>("/catalog/products", { params });
+	async listProducts(params?: ListProductsParams, options?: RequestOptions): Promise<ListProductsResponse> {
+		const res = await apiClient.get<ApiEnvelope<ListProductsResponse>>("/catalog/products", {
+			params,
+			signal: options?.signal,
+		});
 		const data = res.data.data as any;
 		const items = Array.isArray(data?.items) ? data.items.map(normalizeInventoryProduct) : [];
 		const nextCursor = typeof data?.nextCursor === "string" ? data.nextCursor : null;

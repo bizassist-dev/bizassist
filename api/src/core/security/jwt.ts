@@ -9,6 +9,7 @@ export interface JwtPayload {
 	sub: string; // userId
 	email: string;
 	tokenVersion: number;
+	deviceId?: string;
 }
 
 export type VerifiedJwtPayload = JwtPayload & JwtStdPayload;

@@ -10,6 +10,8 @@ import {
 	handleRefresh,
 	handleLogout,
 	handleLogoutAll,
+	handleListDevices,
+	handleRevokeDevice,
 	handleForgotPassword,
 	handleVerifyPasswordResetOtp,
 	handleResetPassword,
@@ -69,9 +71,11 @@ router.post("/reset-password", resetPasswordRateLimiter, validateBody(resetPassw
 
 // Protected endpoints
 router.get("/me", authMiddleware, handleMe);
+router.get("/devices", authMiddleware, handleListDevices);
 
 // Logout endpoints (validated)
 router.post("/logout", authMiddleware, validateBody(logoutSchema), handleLogout);
 router.post("/logout-all", authMiddleware, validateBody(logoutAllSchema), handleLogoutAll);
+router.post("/devices/:deviceId/revoke", authMiddleware, handleRevokeDevice);
 
 export { router as authRoutes };

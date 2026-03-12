@@ -23,8 +23,8 @@
 // - stock-health filters are applied to active, inventory-tracked items only
 // - this list screen is read model + navigation shell; stock mutations occur in dedicated ledger flows
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, FlatList, RefreshControl } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, StyleSheet, FlatList } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
@@ -66,6 +66,8 @@ import {
 } from "@/modules/inventory/inventory.filters";
 
 import { useNavLock } from "@/shared/hooks/useNavLock";
+import { useInsertedRowAttention } from "@/shared/hooks/useInsertedRowAttention";
+import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 
 type InventorySellableTabValue = "ITEMS" | "SERVICES";
 type InventoryStatusTabValue = "ACTIVE" | "ARCHIVED";
@@ -290,7 +292,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 
 	const [q, setQ] = useState(paramQ);
 	const [selectedId, setSelectedId] = useState<string>("");
-	const [isRefreshing, setIsRefreshing] = useState(false);
+	const refreshInFlightRef = useRef(false);
 
 	useEffect(() => setQ(paramQ), [paramQ]);
 
@@ -298,6 +300,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 
 	const trimmedQ = useMemo(() => q.trim(), [q]);
 	const [debouncedQ, setDebouncedQ] = useState(trimmedQ);
+	const operationalRefreshInterval = useOperationalQueryAutoRefresh();
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
@@ -314,6 +317,8 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		queryKey: inventoryKeys.products(debouncedQ, { includeArchived: true }),
 		queryFn: () => inventoryApi.listProducts({ q: debouncedQ || undefined, includeArchived: true, limit: 100 }),
 		staleTime: 30_000,
+		refetchInterval: operationalRefreshInterval,
+		refetchIntervalInBackground: false,
 	});
 
 	const unitsQuery = useQuery<Unit[]>({
@@ -396,6 +401,12 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		if (sellableTabValue === "SERVICES") return statusFilteredItems;
 		return filterInventoryItems(statusFilteredItems, activeFilter);
 	}, [activeFilter, sellableTabValue, statusFilteredItems]);
+	const rowAttentionTokens = useInsertedRowAttention(
+		useMemo(() => filteredItems.map((item) => item.id), [filteredItems]),
+		{
+			scopeKey: `${routeScope}:${sellableTabValue}:${statusTabValue}:${healthTabValue}:${debouncedQ}`,
+		},
+	);
 
 	const createRoute = useMemo(() => {
 		if (routeScope === "settings-items-services") {
@@ -424,10 +435,12 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 	}, [filteredItems, selectedId, sellableTabValue]);
 
 	const onRefresh = useCallback(() => {
-		if (isRefreshing) return;
-		setIsRefreshing(true);
-		productsQuery.refetch().finally(() => setIsRefreshing(false));
-	}, [isRefreshing, productsQuery]);
+		if (refreshInFlightRef.current || productsQuery.isFetching) return;
+		refreshInFlightRef.current = true;
+		productsQuery.refetch().finally(() => {
+			refreshInFlightRef.current = false;
+		});
+	}, [productsQuery]);
 
 	const onSetSellable = useCallback(
 		(v: InventorySellableTabValue) => {
@@ -470,6 +483,8 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		queryFn: () => inventoryApi.getProductDetail(selectedId),
 		enabled: !!selectedId,
 		staleTime: 30_000,
+		refetchInterval: selectedId ? operationalRefreshInterval : false,
+		refetchIntervalInBackground: false,
 	});
 
 	const movementsQuery = useQuery<{ items: InventoryMovement[] }>({
@@ -480,6 +495,8 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		},
 		enabled: !!selectedId,
 		staleTime: 30_000,
+		refetchInterval: selectedId ? operationalRefreshInterval : false,
+		refetchIntervalInBackground: false,
 	});
 
 	const typeLabel = useMemo(() => formatProductTypeLabel(detailQuery.data?.type), [detailQuery.data?.type]);
@@ -602,13 +619,14 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 					active={item.id === selectedId}
 					categoryIsActive={categoryIsActive}
 					categoryColor={categoryColor}
+					attentionPulseKey={rowAttentionTokens[item.id]}
 					showOnHandUnit={false}
 					onPress={onPressRow}
 					disabled={!canNavigate}
 				/>
 			);
 		},
-		[canNavigate, categoryMetaById, router, safePush, selectedId, sellableTabValue, toScopedRoute, unitsById],
+		[canNavigate, categoryMetaById, rowAttentionTokens, router, safePush, selectedId, sellableTabValue, toScopedRoute, unitsById],
 	);
 
 	const movementCountLabel = useMemo(() => {
@@ -740,7 +758,6 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 											style={styles.list}
 											showsVerticalScrollIndicator={false}
 											showsHorizontalScrollIndicator={false}
-											refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
 											renderItem={renderInventoryRow}
 											ItemSeparatorComponent={() => <View style={styles.itemGap} />}
 											ListEmptyComponent={

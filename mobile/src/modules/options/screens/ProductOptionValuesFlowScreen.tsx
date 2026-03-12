@@ -266,8 +266,9 @@ export function ProductOptionValuesFlowScreen({ routeScope = "inventory" }: { ro
 					variant='exit'
 					onLeftPress={onBack}
 					onRightPress={onSave}
+					rightRailWidth={96}
 					rightDisabled={selectedValueIds.length === 0}
-					rightSlot={({ disabled }) => <BAIHeaderActionButton label='Done' disabled={disabled} />}
+					rightSlot={({ disabled }) => <BAIHeaderActionButton label='Done' variant='solid-primary' disabled={disabled} />}
 				/>
 				<BAISurface
 					bordered

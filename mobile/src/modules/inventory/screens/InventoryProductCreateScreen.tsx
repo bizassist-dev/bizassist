@@ -48,6 +48,7 @@ import { useProcessExitGuard } from "@/modules/navigation/useProcessExitGuard";
 
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { FIELD_LIMITS } from "@/shared/fieldLimits";
+import { posTileLabelRegex } from "@/shared/validation/patterns";
 import {
 	sanitizeLabelInput,
 	sanitizeMoneyInput,
@@ -68,11 +69,16 @@ import {
 	type InventoryRouteScope,
 } from "@/modules/inventory/navigation.scope";
 import { runGovernedExitReplace } from "@/modules/inventory/navigation.governance";
+import { patchProductImageCaches } from "@/modules/inventory/inventory.cache";
 import { invalidateInventoryAfterMutation } from "@/modules/inventory/inventory.invalidate";
+import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
 import type { CreateProductInput } from "@/modules/inventory/inventory.types";
+import { catalogKeys } from "@/modules/catalog/catalog.queries";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { uploadProductImage } from "@/modules/media/media.upload";
 import { toMediaDomainError } from "@/modules/media/media.errors";
+import { patchPosCatalogImageCaches, patchPosCatalogProductCaches } from "@/modules/pos/pos.catalog.cache";
 import { ModifierGroupSelector, modifierGroupSelectorKey } from "@/modules/modifiers/components/ModifierGroupSelector";
 import { modifiersApi } from "@/modules/modifiers/modifiers.api";
 import {
@@ -170,6 +176,30 @@ function safeString(v: unknown): string {
 function buildFallbackPosLabel(name: string): string {
 	const compact = sanitizeLabelInput(name).replace(/\s+/g, "");
 	return compact.slice(0, 2).toUpperCase();
+}
+
+function validateOptionalPosTileLabel(label: string): string | null {
+	const trimmed = label.trim();
+	if (!trimmed) return null;
+	if (trimmed.length < FIELD_LIMITS.posTileLabelMin) {
+		return `POS tile label must be at least ${FIELD_LIMITS.posTileLabelMin} characters.`;
+	}
+	if (!posTileLabelRegex.test(trimmed)) {
+		return "POS tile label contains invalid characters.";
+	}
+	return null;
+}
+
+function getFirstValidationFieldMessage(payload: any): string | null {
+	const fields = payload?.data?.fields;
+	if (!fields || typeof fields !== "object") return null;
+	for (const value of Object.values(fields)) {
+		if (Array.isArray(value)) {
+			const message = value.find((item) => typeof item === "string" && item.trim().length > 0);
+			if (message) return message;
+		}
+	}
+	return null;
 }
 
 function toMoneyOrNull(raw: string): number | null {
@@ -334,6 +364,12 @@ export default function InventoryProductCreateScreen({
 	const { currencyCode } = useActiveBusinessMeta();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 	const thisRoute = useMemo(() => toScopedRoute(INVENTORY_THIS_ROUTE), [toScopedRoute]);
+	const inventoryRootRoute = useMemo(() => {
+		if (routeScope === "settings-items-services") {
+			return `${inventoryScopeRoot(routeScope)}?type=ITEMS`;
+		}
+		return inventoryScopeRoot(routeScope);
+	}, [routeScope]);
 	const addItemsRoute = useMemo(() => {
 		if (routeScope === "settings-items-services") {
 			return `${inventoryScopeRoot(routeScope)}?type=ITEMS`;
@@ -1016,6 +1052,11 @@ export default function InventoryProductCreateScreen({
 			setError(null);
 
 			const imageUriForUpload = tileMode === "IMAGE" ? localImageUri : "";
+			const tileLabelError = validateOptionalPosTileLabel(tileLabel);
+			if (tileLabelError) {
+				setError(tileLabelError);
+				return;
+			}
 
 			await withBusy("Saving item…", async () => {
 				const priceN = toMoneyOrNull(draft.priceText);
@@ -1088,9 +1129,9 @@ export default function InventoryProductCreateScreen({
 					let createdId = createdProductIdRef.current;
 					if (!createdId) {
 						const created = await inventoryApi.createProduct(apiPayload as any);
+						patchPosCatalogProductCaches(queryClient, created);
 						createdId = created.id;
 						createdProductIdRef.current = createdId;
-						invalidateInventoryAfterMutation(queryClient, { productId: createdId });
 					}
 
 					if (hasSelectedOptionSetsForSave && variationSelectionsForSave.length > 0) {
@@ -1167,16 +1208,26 @@ export default function InventoryProductCreateScreen({
 						}
 					}
 
-					const detailRoute = toScopedRoute(`/(app)/(tabs)/inventory/products/${encodeURIComponent(createdId)}`);
-
 					if (imageUriForUpload) {
 						try {
-							await uploadProductImage({
+							const uploaded = await uploadProductImage({
 								imageKind: "PRIMARY_POS_TILE",
 								localUri: imageUriForUpload,
 								productId: createdId,
 								isPrimary: true,
 								sortOrder: 0,
+							});
+
+							const nextUpdatedAt = new Date().toISOString();
+							const nextPrimaryImageUrl = toCacheBustedImageUri(uploaded.publicUrl, nextUpdatedAt);
+							patchProductImageCaches(queryClient, createdId, {
+								primaryImageUrl: nextPrimaryImageUrl,
+								updatedAt: nextUpdatedAt,
+							});
+							patchPosCatalogImageCaches(queryClient, {
+								productId: createdId,
+								primaryImageUrl: nextPrimaryImageUrl,
+								updatedAt: nextUpdatedAt,
 							});
 						} catch (e) {
 							const domain = toMediaDomainError(e);
@@ -1185,13 +1236,20 @@ export default function InventoryProductCreateScreen({
 						}
 					}
 
+					invalidateInventoryAfterMutation(queryClient, { productId: createdId });
+					await Promise.all([
+						queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+						queryClient.invalidateQueries({ queryKey: catalogKeys.all }),
+						queryClient.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
+					]);
+
 					createdProductIdRef.current = null;
 					reset();
 					if (afterSave === "addAnother") {
 						showSuccess("Item saved. Add another item.");
 						return;
 					}
-					router.replace(detailRoute as any);
+					router.replace(inventoryRootRoute as any);
 				} catch (e: any) {
 					const payload = e?.response?.data;
 					const backendCode = payload?.code ?? payload?.errorCode ?? payload?.error?.code ?? payload?.data?.code;
@@ -1208,6 +1266,7 @@ export default function InventoryProductCreateScreen({
 						return;
 					}
 					const backendMessage =
+						getFirstValidationFieldMessage(payload) ??
 						payload?.message ??
 						payload?.error ??
 						payload?.errorMessage ??
@@ -1222,6 +1281,7 @@ export default function InventoryProductCreateScreen({
 			draft,
 			effectiveScale,
 			effectiveUnitId,
+			inventoryRootRoute,
 			isUiDisabled,
 			localImageUri,
 			queryClient,
@@ -1231,7 +1291,6 @@ export default function InventoryProductCreateScreen({
 			tileColor,
 			tileLabel,
 			tileMode,
-			toScopedRoute,
 			withBusy,
 		],
 	);
@@ -1405,7 +1464,7 @@ export default function InventoryProductCreateScreen({
 												size='lg'
 												icon='barcode-scan'
 												iconSize={44}
-												accessibilityLabel='Scan barcode'
+												accessibilityLabel='Scan barcode or QR code'
 												onPress={onOpenBarcodeScanner}
 												disabled={isUiDisabled}
 												style={styles.barcodeIconButtonLarge}

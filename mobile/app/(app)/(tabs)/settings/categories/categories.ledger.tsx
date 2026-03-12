@@ -236,42 +236,44 @@ export function CategoriesLedgerScreen({
 				/>
 				<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
 					<SettingsScreenLayout
-						screenStyle={{ paddingTop: 0, paddingBottom: screenBottomPad }}
+						screenStyle={{ paddingTop: 0, paddingBottom: screenBottomPad, marginTop: -6 }}
 						columnStyle={styles.contentColumn}
 						maxWidth={contentMaxWidth}
 					>
-						<BAISurface style={[styles.card, { borderColor }]} padded bordered>
-							<View style={styles.controls}>
-								{mode === "settings" ? (
-									<BAIPressableRow
-										label='Category Visibility'
-										value={visibilityRowValue}
-										onPress={onPressVisibility}
+						<View style={styles.content}>
+							{mode === "settings" ? (
+								<BAIPressableRow
+									label='Category Visibility'
+									value={visibilityRowValue}
+									onPress={onPressVisibility}
+									disabled={isUiDisabled}
+									style={styles.visibilityRow}
+								/>
+							) : null}
+
+							<BAISurface style={[styles.controlsCard, { borderColor }]} padded bordered>
+								<View style={styles.controls}>
+									<BAISearchBar
+										value={qText}
+										onChangeText={(v) => {
+											const cleaned = sanitizeSearchInput(v);
+											setQText(cleaned.length > FIELD_LIMITS.search ? cleaned.slice(0, FIELD_LIMITS.search) : cleaned);
+										}}
+										placeholder='Search categories...'
+										maxLength={FIELD_LIMITS.search}
+										onClear={hasSearch ? onClearSearch : undefined}
 										disabled={isUiDisabled}
-										style={styles.visibilityRow}
 									/>
-								) : null}
 
-								<BAISearchBar
-									value={qText}
-									onChangeText={(v) => {
-										const cleaned = sanitizeSearchInput(v);
-										setQText(cleaned.length > FIELD_LIMITS.search ? cleaned.slice(0, FIELD_LIMITS.search) : cleaned);
-									}}
-									placeholder='Search categories...'
-									maxLength={FIELD_LIMITS.search}
-									onClear={hasSearch ? onClearSearch : undefined}
-									disabled={isUiDisabled}
-								/>
-
-								<BAIGroupTabs
-									tabs={categoryTabs}
-									value={filter}
-									onChange={setFilter}
-									disabled={isUiDisabled}
-									countFormatter={(count) => formatCompactNumber(count, countryCode)}
-								/>
-							</View>
+									<BAIGroupTabs
+										tabs={categoryTabs}
+										value={filter}
+										onChange={setFilter}
+										disabled={isUiDisabled}
+										countFormatter={(count) => formatCompactNumber(count, countryCode)}
+									/>
+								</View>
+							</BAISurface>
 
 							<View style={styles.listSection}>
 									{query.isLoading ? (
@@ -316,7 +318,7 @@ export function CategoriesLedgerScreen({
 
 									{!query.isLoading ? list : null}
 							</View>
-						</BAISurface>
+						</View>
 					</SettingsScreenLayout>
 				</TouchableWithoutFeedback>
 			</BAIScreen>
@@ -334,11 +336,13 @@ const styles = StyleSheet.create({
 		flex: 1,
 		minHeight: 0,
 	},
-	card: {
+	content: {
 		flex: 1,
 		minHeight: 0,
-		borderRadius: 18,
 		gap: 12,
+	},
+	controlsCard: {
+		borderRadius: 18,
 	},
 	controls: {
 		gap: 12,

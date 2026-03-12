@@ -233,7 +233,7 @@ export type BAIButtonIntent =
 	| "neutral"
 	| "teal";
 
-export type BAIButtonVariant = "solid" | "outline" | "soft" | "subtle" | "ghost";
+export type BAIButtonVariant = "solid" | "outline" | "soft" | "subtle" | "ghost" | "inverse";
 
 export type BAIButtonColorConfig = {
 	background: string;
@@ -301,7 +301,23 @@ type IntentGroup = {
 	softBorder: string;
 };
 
-function buildIntentTheme(group: IntentGroup, onFillText: string): Record<BAIButtonVariant, BAIButtonColorConfig> {
+const inverseVariantLight: BAIButtonColorConfig = {
+	background: baiColors.neutral[950],
+	border: baiColors.neutral[950],
+	text: "#FFFFFF",
+};
+
+const inverseVariantDark: BAIButtonColorConfig = {
+	background: baiSemanticColors.surfacesDark.surfaceElevated,
+	border: baiSemanticColors.surfacesDark.surfaceElevated,
+	text: "#FFFFFF",
+};
+
+function buildIntentTheme(
+	group: IntentGroup,
+	onFillText: string,
+	inverseVariant: BAIButtonColorConfig,
+): Record<BAIButtonVariant, BAIButtonColorConfig> {
 	return {
 		solid: {
 			background: group.main,
@@ -328,6 +344,7 @@ function buildIntentTheme(group: IntentGroup, onFillText: string): Record<BAIBut
 			border: "transparent",
 			text: group.main,
 		},
+		inverse: inverseVariant,
 	};
 }
 
@@ -359,14 +376,14 @@ const secondaryGroupDark: IntentGroup = {
 	softBorder: baiColors.indigo[200],
 };
 
-const primaryThemeLight = buildIntentTheme(primaryGroupLight, "#FFFFFF");
-const primaryThemeDark = buildIntentTheme(primaryGroupDark, "#FFFFFF");
-const secondaryThemeLight = buildIntentTheme(secondaryGroupLight, "#FFFFFF");
-const secondaryThemeDark = buildIntentTheme(secondaryGroupDark, "#FFFFFF");
+const primaryThemeLight = buildIntentTheme(primaryGroupLight, "#FFFFFF", inverseVariantLight);
+const primaryThemeDark = buildIntentTheme(primaryGroupDark, "#FFFFFF", inverseVariantDark);
+const secondaryThemeLight = buildIntentTheme(secondaryGroupLight, "#FFFFFF", inverseVariantLight);
+const secondaryThemeDark = buildIntentTheme(secondaryGroupDark, "#FFFFFF", inverseVariantDark);
 
 // Other semantic intents remain stable; only primary is strictly governed to enterprise-blue.
-const successTheme: Record<BAIButtonVariant, BAIButtonColorConfig> = {
-	...buildIntentTheme(baiSemanticColors.success, baiSemanticColors.text.onSuccess),
+const successThemeLight: Record<BAIButtonVariant, BAIButtonColorConfig> = {
+	...buildIntentTheme(baiSemanticColors.success, baiSemanticColors.text.onSuccess, inverseVariantLight),
 	solid: {
 		background: baiSemanticColors.success.main,
 		border: baiSemanticColors.success.main,
@@ -374,8 +391,17 @@ const successTheme: Record<BAIButtonVariant, BAIButtonColorConfig> = {
 	},
 };
 
-const warningTheme: Record<BAIButtonVariant, BAIButtonColorConfig> = {
-	...buildIntentTheme(baiSemanticColors.warning, baiSemanticColors.text.onPrimary),
+const successThemeDark: Record<BAIButtonVariant, BAIButtonColorConfig> = {
+	...buildIntentTheme(baiSemanticColors.success, baiSemanticColors.text.onSuccess, inverseVariantDark),
+	solid: {
+		background: baiSemanticColors.success.main,
+		border: baiSemanticColors.success.main,
+		text: "#F8FAFC",
+	},
+};
+
+const warningThemeLight: Record<BAIButtonVariant, BAIButtonColorConfig> = {
+	...buildIntentTheme(baiSemanticColors.warning, baiSemanticColors.text.onPrimary, inverseVariantLight),
 	solid: {
 		background: baiSemanticColors.warning.main,
 		border: baiSemanticColors.warning.main,
@@ -383,14 +409,30 @@ const warningTheme: Record<BAIButtonVariant, BAIButtonColorConfig> = {
 	},
 };
 
-const errorTheme = buildIntentTheme(baiSemanticColors.error, baiSemanticColors.text.onPrimary);
-const infoTheme = buildIntentTheme(baiSemanticColors.info, baiSemanticColors.text.onPrimary);
+const warningThemeDark: Record<BAIButtonVariant, BAIButtonColorConfig> = {
+	...buildIntentTheme(baiSemanticColors.warning, baiSemanticColors.text.onPrimary, inverseVariantDark),
+	solid: {
+		background: baiSemanticColors.warning.main,
+		border: baiSemanticColors.warning.main,
+		text: "#111827",
+	},
+};
+
+const errorThemeLight = buildIntentTheme(
+	baiSemanticColors.error,
+	baiSemanticColors.text.onPrimary,
+	inverseVariantLight,
+);
+const errorThemeDark = buildIntentTheme(baiSemanticColors.error, baiSemanticColors.text.onPrimary, inverseVariantDark);
+const infoThemeLight = buildIntentTheme(baiSemanticColors.info, baiSemanticColors.text.onPrimary, inverseVariantLight);
+const infoThemeDark = buildIntentTheme(baiSemanticColors.info, baiSemanticColors.text.onPrimary, inverseVariantDark);
 
 // ✅ Added: teal theme
-const tealTheme = buildIntentTheme(baiSemanticColors.teal, "#FFFFFF");
+const tealThemeLight = buildIntentTheme(baiSemanticColors.teal, "#FFFFFF", inverseVariantLight);
+const tealThemeDark = buildIntentTheme(baiSemanticColors.teal, "#FFFFFF", inverseVariantDark);
 
 const neutralThemeLight: Record<BAIButtonVariant, BAIButtonColorConfig> = {
-	...buildIntentTheme(baiSemanticColors.neutral, baiSemanticColors.text.onPrimary),
+	...buildIntentTheme(baiSemanticColors.neutral, baiSemanticColors.text.onPrimary, inverseVariantLight),
 	solid: {
 		background: baiColors.neutral[500],
 		border: baiColors.neutral[600],
@@ -409,7 +451,7 @@ const neutralThemeLight: Record<BAIButtonVariant, BAIButtonColorConfig> = {
 };
 
 const neutralThemeDark: Record<BAIButtonVariant, BAIButtonColorConfig> = {
-	...buildIntentTheme(baiSemanticColors.neutral, baiSemanticColors.text.onPrimary),
+	...buildIntentTheme(baiSemanticColors.neutral, baiSemanticColors.text.onPrimary, inverseVariantDark),
 	subtle: {
 		background: baiSemanticColors.surfacesDark.surfaceElevated,
 		border: baiSemanticColors.surfacesDark.borderSubtle,
@@ -422,7 +464,7 @@ const neutralThemeDark: Record<BAIButtonVariant, BAIButtonColorConfig> = {
 	},
 };
 
-const dangerTheme = buildIntentTheme(
+const dangerThemeLight = buildIntentTheme(
 	{
 		main: baiColors.red[700],
 		dark: baiColors.red[800],
@@ -430,6 +472,18 @@ const dangerTheme = buildIntentTheme(
 		softBorder: baiColors.red[200],
 	},
 	"#FFFFFF",
+	inverseVariantLight,
+);
+
+const dangerThemeDark = buildIntentTheme(
+	{
+		main: baiColors.red[700],
+		dark: baiColors.red[800],
+		soft: baiColors.red[50],
+		softBorder: baiColors.red[200],
+	},
+	"#FFFFFF",
+	inverseVariantDark,
 );
 
 export const baiButtonThemeByMode: Record<
@@ -439,24 +493,24 @@ export const baiButtonThemeByMode: Record<
 	light: {
 		primary: primaryThemeLight,
 		secondary: secondaryThemeLight,
-		success: successTheme,
-		warning: warningTheme,
-		error: errorTheme,
-		danger: dangerTheme,
-		info: infoTheme,
+		success: successThemeLight,
+		warning: warningThemeLight,
+		error: errorThemeLight,
+		danger: dangerThemeLight,
+		info: infoThemeLight,
 		neutral: neutralThemeLight,
-		teal: tealTheme,
+		teal: tealThemeLight,
 	},
 	dark: {
 		primary: primaryThemeDark,
 		secondary: secondaryThemeDark,
-		success: successTheme,
-		warning: warningTheme,
-		error: errorTheme,
-		danger: dangerTheme,
-		info: infoTheme,
+		success: successThemeDark,
+		warning: warningThemeDark,
+		error: errorThemeDark,
+		danger: dangerThemeDark,
+		info: infoThemeDark,
 		neutral: neutralThemeDark,
-		teal: tealTheme,
+		teal: tealThemeDark,
 	},
 };
 

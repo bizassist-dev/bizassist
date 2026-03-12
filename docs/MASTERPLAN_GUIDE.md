@@ -1388,6 +1388,7 @@ BizAssist must use a tiered delivery policy by `MediaKind` to balance POS-grade 
 4. **Cache headers for public images must be aggressive** for immutable assets (e.g., `public, max-age=31536000, immutable`) to maximize CDN + client cache hit rate.
 5. **Mobile must use `expo-image` with disk cache** for list/tile surfaces.
 6. **Web must consume the same delivery URLs** (public URLs for product/branding; signed URLs only for user-private media when required).
+7. **Inventory/service image mutations must patch client caches before invalidation/navigation.** For create/edit flows that upload a tile/photo after the main product/service save, do not invalidate list/detail queries immediately after the base entity mutation. Complete the image upload, patch `primaryImageUrl` plus a fresh `updatedAt` seed into React Query caches, then invalidate list/detail/catalog caches so row-list thumbnails update in realtime without requiring a manual refresh.
 
 **Objective:** Product and POS tile imagery must be instant after first load; privacy controls apply only to user identity media.
 
@@ -1408,6 +1409,15 @@ The API must enforce business-scoped caps to prevent abuse, with defaults:
 
 Limits are env-configurable and must return explicit error codes so mobile can surface friendly messages.
 
+### 3.6.1 Auth Device Cap Governance (Locked)
+
+- Auth session issuance must treat device usage as an install-scoped concern, not as an IP- or user-agent-only heuristic.
+- The canonical cap is enforced against active refresh-token devices per user, with `AUTH_MAX_DEVICES_PER_USER` as the environment-controlled limit.
+- Mobile clients must attach a stable install `deviceId` on auth and authenticated requests; access tokens and refresh tokens are device-bound once issued with that `deviceId`.
+- Protected API requests and realtime websocket connections must reject access tokens presented from a different device than the one recorded in the token payload.
+- Users must have a self-service device-management path that lists active devices and revokes old ones without needing staff intervention.
+- Legacy sessions without a bound `deviceId` may continue until rotated, but all newly issued tokens must be device-bound.
+
 ### 3.7 React Query freshness governance (staleTime tiers)
 
 `staleTime` controls cache freshness and must be set by feature volatility. It is **not** a polling mechanism.
@@ -1420,6 +1430,18 @@ Use these canonical tiers:
 - **Long-lived metadata:** `24 * 60 * 60 * 1000`
 
 If a flow requires true near-real-time multi-device convergence, prefer event-driven invalidation (or websockets) over lowering staleTime globally.
+
+### 3.7.1 Realtime Invalidation Governance (Locked)
+
+- Phase 1 realtime convergence uses a **business-scoped WebSocket invalidation channel**, not websocket-delivered full data payloads.
+- Realtime payloads must remain minimal and event-shaped (for example `catalog.product.changed`, `inventory.stock.changed`).
+- Mobile must continue using existing React Query reads as the source of truth; websocket events may only trigger scoped invalidation/refetch.
+- Foreground polling may remain as a slow fallback for reconnect gaps, but websocket invalidation is the primary convergence path.
+- Inventory/POS operational row lists must use the title sync badge as the canonical passive sync indicator. Do not attach native `RefreshControl` pull-to-refresh UI to those lists once realtime invalidation is active; background sync must not shift list position or show a native refresh spinner.
+- Realtime connection auth must reuse the existing access token and active-business scope.
+- Realtime fanout must use shared infrastructure whenever cross-instance guarantees matter; the canonical Phase 2 implementation is Postgres `LISTEN/NOTIFY` with instance-local websocket delivery.
+- API instances may deliver websocket events only to their own connected sockets, but mutation publishes must fan out through the shared channel so all instances invalidate consistently.
+- If Postgres `LISTEN/NOTIFY` is later replaced, the replacement must preserve business scoping, minimal event payloads, and React Query invalidation-only semantics.
 
 ### 3.8 API Contract + State Management + File Structure Governance (Locked)
 

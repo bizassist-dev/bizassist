@@ -18,8 +18,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useLocalSearchParams, usePathname, useRouter } from "expo-router";
-import { useMemo } from "react";
-import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useTheme } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -30,15 +30,16 @@ import { BAIText } from "@/components/ui/BAIText";
    ========================= */
 
 type CanonicalTab = "home" | "inventory" | "pos" | "settings";
+type TabIconSpec = { family: "material"; name: keyof typeof MaterialCommunityIcons.glyphMap };
 
 const TAB_ORDER: CanonicalTab[] = ["pos", "inventory", "home", "settings"];
 const CANONICAL_SET = new Set<CanonicalTab>(TAB_ORDER);
 
-const ICONS: Record<CanonicalTab, keyof typeof MaterialCommunityIcons.glyphMap> = {
-	home: "clipboard-clock-outline",
-	inventory: "package-variant",
-	pos: "cash-register",
-	settings: "cog-outline",
+const ICONS: Record<CanonicalTab, TabIconSpec> = {
+	home: { family: "material", name: "clipboard-clock" },
+	inventory: { family: "material", name: "package" },
+	pos: { family: "material", name: "cash-register" },
+	settings: { family: "material", name: "cog" },
 };
 
 const LABELS: Record<CanonicalTab, string> = {
@@ -48,14 +49,21 @@ const LABELS: Record<CanonicalTab, string> = {
 	settings: "Settings",
 };
 
-const DOCK_HEIGHT = 60;
+const DOCK_HEIGHT = 64;
 const DOCK_RADIUS = 999;
-const SCAN_BUTTON_SIZE = 56;
+const SCAN_BUTTON_SIZE = 60;
 
 const INSET = 6;
 const DOCK_ITEM_GAP = 2;
 const CLUSTER_GAP = 8;
 const OUTER_HORIZONTAL_MARGIN = 10;
+const BOTTOM_SAFE_AREA_REDUCTION = 8;
+const TAB_ICON_SIZES: Record<CanonicalTab, number> = {
+	home: 22,
+	inventory: 21,
+	pos: 22,
+	settings: 22,
+};
 
 /**
  * STRICT canonicalization.
@@ -122,8 +130,12 @@ function isInventoryScanPath(pathname: string): boolean {
 	return (
 		p === "/inventory/scan" ||
 		p === "/(app)/(tabs)/inventory/scan" ||
+		p === "/home/scan" ||
+		p === "/(app)/(tabs)/home/scan" ||
 		p === "/pos/scan" ||
-		p === "/(app)/(tabs)/pos/scan"
+		p === "/(app)/(tabs)/pos/scan" ||
+		p === "/settings/scan" ||
+		p === "/(app)/(tabs)/settings/scan"
 	);
 }
 
@@ -133,6 +145,25 @@ function isPosPath(pathname: string): boolean {
 		.trim()
 		.replace(/\/+$/g, "");
 	return p === "/pos" || p.startsWith("/pos/") || p === "/(app)/(tabs)/pos" || p.startsWith("/(app)/(tabs)/pos/");
+}
+
+function canonicalFromScanPath(pathname: string): CanonicalTab | null {
+	const p = String(pathname ?? "")
+		.toLowerCase()
+		.trim()
+		.replace(/\/+$/g, "");
+	if (p === "/pos/scan" || p === "/(app)/(tabs)/pos/scan") return "pos";
+	if (p === "/inventory/scan" || p === "/(app)/(tabs)/inventory/scan") return "inventory";
+	if (p === "/settings/scan" || p === "/(app)/(tabs)/settings/scan") return "settings";
+	if (p === "/home/scan" || p === "/(app)/(tabs)/home/scan") return "home";
+	return null;
+}
+
+function canonicalScanPath(tab: CanonicalTab): string {
+	if (tab === "pos") return "/(app)/(tabs)/pos/scan";
+	if (tab === "inventory") return "/(app)/(tabs)/inventory/scan";
+	if (tab === "settings") return "/(app)/(tabs)/settings/scan";
+	return "/(app)/(tabs)/home/scan";
 }
 
 function toReturnToPath(pathname: string, params: Record<string, unknown>): string {
@@ -158,26 +189,6 @@ function toReturnToPath(pathname: string, params: Record<string, unknown>): stri
 
 	const qs = query.toString();
 	return qs ? `${base}?${qs}` : base;
-}
-
-/**
- * Darken a hex color by mixing it with black.
- * amount: 0..1 (higher = darker)
- */
-function darkenHex(hexColor: string, amount: number): string {
-	const hex = (hexColor ?? "").replace("#", "").trim();
-	if (hex.length !== 6) return hexColor;
-
-	const a = Math.max(0, Math.min(1, amount));
-	const r = parseInt(hex.slice(0, 2), 16);
-	const g = parseInt(hex.slice(2, 4), 16);
-	const b = parseInt(hex.slice(4, 6), 16);
-
-	const nr = Math.round(r * (1 - a));
-	const ng = Math.round(g * (1 - a));
-	const nb = Math.round(b * (1 - a));
-
-	return `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
 }
 
 function applyAlpha(color: string, alpha: number): string {
@@ -233,7 +244,7 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 	 */
 	const maxWidth = isTablet ? 480 : 372;
 
-	const bottom = Math.max(insets.bottom, 12);
+	const bottom = Math.max(insets.bottom - BOTTOM_SAFE_AREA_REDUCTION, 2);
 
 	const outlineBase = theme.colors.outlineVariant ?? theme.colors.outline;
 	const dockBg = applyAlpha(theme.colors.surface, theme.dark ? 0.93 : 0.97);
@@ -245,15 +256,20 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 	const scanButtonBg = applyAlpha(theme.colors.surface, theme.dark ? 0.96 : 0.99);
 	const scanButtonBorderColor = applyAlpha(outlineBase, theme.dark ? 0.82 : 0.56);
 
-	const iconIdle = theme.colors.onSurfaceVariant;
+	const iconIdle = theme.dark ? theme.colors.onSurface : theme.colors.onSurfaceVariant;
 	const iconActive = theme.colors.primary;
-	const labelIdle = theme.colors.onSurfaceVariant;
+	const labelIdle = theme.dark ? theme.colors.onSurface : theme.colors.onSurfaceVariant;
 	const labelActive = theme.colors.primary;
 
 	const wrapperStyle = useMemo(
 		() => [styles.wrapper, { left: OUTER_HORIZONTAL_MARGIN, right: OUTER_HORIZONTAL_MARGIN, bottom }],
 		[bottom],
 	);
+	const [rowWidth, setRowWidth] = useState(0);
+	const activeTranslateX = useRef(new Animated.Value(0)).current;
+	const activeOpacity = useRef(new Animated.Value(0)).current;
+	const activeIndicatorReadyRef = useRef(false);
+	const animationSequenceRef = useRef(0);
 
 	const dockStyle = useMemo(
 		() => [styles.dock, { maxWidth, backgroundColor: dockBg, borderColor: containerBorderColor }],
@@ -343,6 +359,53 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		const tabRoot = routeByCanonical.get(focusedCanonical);
 		return tabRoot?.key ?? null;
 	}, [focusedCanonical, routeByCanonical]);
+	const scanOriginWorkspace = useMemo(() => {
+		const raw =
+			typeof (currentParams as any)?.scanOriginWorkspace === "string" ? (currentParams as any).scanOriginWorkspace : "";
+		const normalized = raw.trim().toLowerCase();
+		if (CANONICAL_SET.has(normalized as CanonicalTab)) return normalized as CanonicalTab;
+		return null;
+	}, [currentParams]);
+	const activeCanonical = useMemo(() => {
+		if (!isInventoryScanPath(pathname)) return focusedCanonical;
+		return scanOriginWorkspace ?? canonicalFromScanPath(pathname) ?? focusedCanonical;
+	}, [focusedCanonical, pathname, scanOriginWorkspace]);
+	const activeTabIndex = useMemo(() => {
+		if (!activeCanonical) return 0;
+		const index = TAB_ORDER.indexOf(activeCanonical);
+		return index >= 0 ? index : 0;
+	}, [activeCanonical]);
+	const [displayedActiveTabIndex, setDisplayedActiveTabIndex] = useState(activeTabIndex);
+	const activeSegmentWidth = useMemo(() => {
+		if (rowWidth <= 0) return 0;
+		const totalGapWidth = DOCK_ITEM_GAP * (TAB_ORDER.length - 1);
+		return (rowWidth - totalGapWidth) / TAB_ORDER.length;
+	}, [rowWidth]);
+
+	useEffect(() => {
+		if (activeSegmentWidth <= 0) return;
+		const nextTranslateX = activeTabIndex * (activeSegmentWidth + DOCK_ITEM_GAP);
+		if (!activeIndicatorReadyRef.current) {
+			activeTranslateX.setValue(nextTranslateX);
+			activeOpacity.setValue(1);
+			activeIndicatorReadyRef.current = true;
+			setDisplayedActiveTabIndex(activeTabIndex);
+			return;
+		}
+
+		const animationSequence = animationSequenceRef.current + 1;
+		animationSequenceRef.current = animationSequence;
+		Animated.timing(activeTranslateX, {
+			toValue: nextTranslateX,
+			duration: 240,
+			easing: Easing.out(Easing.cubic),
+			useNativeDriver: true,
+		}).start(({ finished }) => {
+			if (!finished) return;
+			if (animationSequenceRef.current !== animationSequence) return;
+			setDisplayedActiveTabIndex(activeTabIndex);
+		});
+	}, [activeOpacity, activeSegmentWidth, activeTabIndex, activeTranslateX]);
 
 	const isScanOpen = isInventoryScanPath(pathname);
 	const scanIconColor = iconIdle;
@@ -364,7 +427,7 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 			return;
 		}
 
-		const isTabFocused = route.key === focusedTabRouteKey || focusedCanonical === canonical;
+		const isTabFocused = route.key === focusedTabRouteKey || activeCanonical === canonical;
 		if (isTabFocused) return;
 
 		const event = navigation.emit({
@@ -380,8 +443,8 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 
 	const onScanPress = () => {
 		if (isScanOpen) return;
-		const originWorkspace = isPosPath(pathname) ? "pos" : "inventory";
-		const scanPathname = isPosPath(pathname) ? "/(app)/(tabs)/pos/scan" : "/(app)/(tabs)/inventory/scan";
+		const originWorkspace = activeCanonical ?? (isPosPath(pathname) ? "pos" : "inventory");
+		const scanPathname = canonicalScanPath(originWorkspace);
 		router.push({
 			pathname: scanPathname as any,
 			params: {
@@ -397,18 +460,44 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		<View pointerEvents='box-none' style={wrapperStyle}>
 			<View style={styles.cluster}>
 				<View style={dockStyle}>
-					<View style={styles.row}>
+					<View
+						style={styles.row}
+						onLayout={(event) => {
+							const nextWidth = event.nativeEvent.layout.width;
+							if (nextWidth > 0 && Math.abs(nextWidth - rowWidth) > 0.5) {
+								setRowWidth(nextWidth);
+							}
+						}}
+					>
+						{activeSegmentWidth > 0 ? (
+							<Animated.View
+								pointerEvents='none'
+								style={[
+									styles.activeIndicator,
+									{
+										width: activeSegmentWidth,
+										backgroundColor: activeBubbleBg,
+										borderColor: activeBorderColor,
+										opacity: activeOpacity,
+										transform: [{ translateX: activeTranslateX }],
+									},
+								]}
+							/>
+						) : null}
 						{TAB_ORDER.map((key) => {
 							const route = routeByCanonical.get(key);
 
 							if (!route) return <View key={key} style={styles.item} />;
 
-							const baseFocused = route.key === focusedTabRouteKey || focusedCanonical === key;
-							const isFocused = baseFocused;
+							const actualIsFocused = route.key === focusedTabRouteKey || activeCanonical === key;
+							const visualIsFocused = displayedActiveTabIndex === TAB_ORDER.indexOf(key);
 							const settingsRoot = key === "settings" && isSettingsRootPath(pathname);
-							const isPressDisabled = key === "settings" ? isFocused && settingsRoot : isFocused;
+							const isPressDisabled = key === "settings" ? actualIsFocused && settingsRoot : actualIsFocused;
 
 							const { options } = descriptors[route.key];
+							const iconSpec = ICONS[key];
+							const iconSize = TAB_ICON_SIZES[key];
+							const iconColor = visualIsFocused ? iconActive : iconIdle;
 
 							return (
 								<Pressable
@@ -416,7 +505,7 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 									onPress={() => onTabPress(route, key)}
 									disabled={isPressDisabled}
 									accessibilityRole='button'
-									accessibilityState={isFocused ? { selected: true, disabled: isPressDisabled } : {}}
+									accessibilityState={actualIsFocused ? { selected: true, disabled: isPressDisabled } : {}}
 									accessibilityLabel={options.tabBarAccessibilityLabel ?? LABELS[key]}
 									style={styles.item}
 									hitSlop={8}
@@ -425,16 +514,16 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 										style={[
 											styles.bubble,
 											{
-												backgroundColor: isFocused ? activeBubbleBg : "transparent",
-												borderColor: isFocused ? activeBorderColor : "transparent",
+												backgroundColor: "transparent",
+												borderColor: "transparent",
 											},
 										]}
 									>
-										<MaterialCommunityIcons name={ICONS[key]} size={24} color={isFocused ? iconActive : iconIdle} />
+										<MaterialCommunityIcons name={iconSpec.name} size={iconSize} color={iconColor} />
 
 										<BAIText
 											variant='caption'
-											style={[styles.label, { color: isFocused ? labelActive : labelIdle }]}
+											style={[styles.label, { color: visualIsFocused ? labelActive : labelIdle }]}
 											numberOfLines={1}
 										>
 											{LABELS[key]}
@@ -497,16 +586,27 @@ const styles = StyleSheet.create({
 	},
 
 	row: {
+		position: "relative",
 		flexDirection: "row",
 		alignItems: "center",
 		height: "100%",
 		gap: DOCK_ITEM_GAP,
 	},
 
+	activeIndicator: {
+		position: "absolute",
+		top: 0,
+		bottom: 0,
+		left: 0,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+	},
+
 	item: {
 		flex: 1,
 		alignItems: "stretch",
 		justifyContent: "center",
+		zIndex: 1,
 	},
 
 	bubble: {

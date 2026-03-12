@@ -38,6 +38,7 @@ import { BAIPressableRow } from "@/components/ui/BAIPressableRow";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { catalogKeys } from "@/modules/catalog/catalog.queries";
 import { runGovernedProcessExit } from "@/modules/inventory/navigation.governance";
 import { useProcessExitGuard } from "@/modules/navigation/useProcessExitGuard";
@@ -48,6 +49,7 @@ import {
 } from "@/modules/inventory/navigation.scope";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
+import { patchProductImageCaches } from "@/modules/inventory/inventory.cache";
 import { invalidateInventoryAfterMutation } from "@/modules/inventory/inventory.invalidate";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import type { InventoryProductDetail, UpdateProductInput } from "@/modules/inventory/inventory.types";
@@ -62,6 +64,7 @@ import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 import { uploadProductImage } from "@/modules/media/media.upload";
 import { toMediaDomainError } from "@/modules/media/media.errors";
 import { ModifierGroupSelector } from "@/modules/modifiers/components/ModifierGroupSelector";
+import { patchPosCatalogImageCaches, patchPosCatalogProductCaches } from "@/modules/pos/pos.catalog.cache";
 import {
 	DRAFT_ID_KEY as OPTION_DRAFT_ID_KEY,
 	PRODUCT_CREATE_VARIATIONS_ROUTE,
@@ -540,8 +543,7 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 	}, [(params as any)?.[SCANNED_BARCODE_KEY]]);
 
 	const remoteImageUri = useMemo(() => {
-		const raw = typeof (product as any)?.primaryImageUrl === "string" ? (product as any).primaryImageUrl.trim() : "";
-		return raw;
+		return toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt);
 	}, [product]);
 	const localImageUri = useMemo(() => String(mediaDraft.imageLocalUri ?? "").trim(), [mediaDraft.imageLocalUri]);
 	const tileMode = mediaDraft.posTileMode === "IMAGE" ? "IMAGE" : "COLOR";
@@ -798,21 +800,34 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 
 		await withBusy("Saving item...", async () => {
 			try {
-				await inventoryApi.updateProduct(productId, {
+				const updatedProduct = await inventoryApi.updateProduct(productId, {
 					...(payload as any),
 					posTileMode: tileMode,
 					posTileColor: selectedTileColor,
 					posTileLabel: tileLabel.length > 0 ? tileLabel : null,
 				} as any);
+				patchPosCatalogProductCaches(qc, updatedProduct);
 
 				if (imageUriForUpload) {
 					try {
-						await uploadProductImage({
+						const uploaded = await uploadProductImage({
 							imageKind: "PRIMARY_POS_TILE",
 							localUri: imageUriForUpload,
 							productId,
 							isPrimary: true,
 							sortOrder: 0,
+						});
+
+						const nextUpdatedAt = new Date().toISOString();
+						const nextPrimaryImageUrl = toCacheBustedImageUri(uploaded.publicUrl, nextUpdatedAt);
+						patchProductImageCaches(qc, productId, {
+							primaryImageUrl: nextPrimaryImageUrl,
+							updatedAt: nextUpdatedAt,
+						});
+						patchPosCatalogImageCaches(qc, {
+							productId,
+							primaryImageUrl: nextPrimaryImageUrl,
+							updatedAt: nextUpdatedAt,
 						});
 					} catch (uploadErr) {
 						const domainErr = toMediaDomainError(uploadErr);
@@ -1042,7 +1057,7 @@ export default function InventoryProductEditScreen({ routeScope = "inventory" }:
 														size='lg'
 														icon='barcode-scan'
 														iconSize={44}
-														accessibilityLabel='Scan barcode'
+														accessibilityLabel='Scan barcode or QR code'
 														onPress={onOpenBarcodeScanner}
 														disabled={isUiDisabled || isArchived}
 														style={styles.barcodeIconButtonLarge}

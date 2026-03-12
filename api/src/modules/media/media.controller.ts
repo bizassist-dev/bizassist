@@ -9,6 +9,7 @@ import {
 	removeProductPrimaryImageSchema,
 } from "@/modules/media/media.validators";
 import { createSignedUploadUrl, commitUploadedObject, removeProductPrimaryImage } from "@/modules/media/media.service";
+import { publishCatalogProductChanged } from "@/modules/realtime/realtime.events";
 
 type RequestUser = {
 	id: string;
@@ -67,6 +68,9 @@ export const postCommitUploadedObject = asyncHandler(async (req: AuthedRequest, 
 		},
 		dto,
 	);
+	if (user.activeBusinessId && dto.productId) {
+		publishCatalogProductChanged({ businessId: user.activeBusinessId, productId: dto.productId });
+	}
 
 	ok(res, result);
 });
@@ -89,6 +93,9 @@ export const postRemoveProductPrimaryImage = asyncHandler(async (req: AuthedRequ
 		},
 		dto,
 	);
+	if (user.activeBusinessId && dto.productId) {
+		publishCatalogProductChanged({ businessId: user.activeBusinessId, productId: dto.productId });
+	}
 
 	ok(res, result);
 });

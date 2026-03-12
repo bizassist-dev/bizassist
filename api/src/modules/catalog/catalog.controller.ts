@@ -13,6 +13,7 @@ import type {
 import { listProductsQuerySchema } from "./catalog.validators";
 
 import { respondWithEtagJson } from "@/shared/http/etagResponse";
+import { publishCatalogProductChanged } from "@/modules/realtime/realtime.events";
 
 function getBusinessId(req: Request): string {
 	return req.user!.activeBusinessId!;
@@ -43,6 +44,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 	const input = req.body as CreateProductInput;
 
 	const product = await catalogService.createProduct(businessId, input);
+	publishCatalogProductChanged({ businessId, productId: product.id });
 	res.status(StatusCodes.CREATED).json({ success: true, data: product });
 });
 
@@ -54,6 +56,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 	const input = req.body as UpdateProductInput;
 
 	const product = await catalogService.updateProduct(businessId, id, input);
+	publishCatalogProductChanged({ businessId, productId: product.id });
 	res.status(StatusCodes.OK).json({ success: true, data: product });
 });
 
@@ -79,6 +82,7 @@ export const generateProductVariations = asyncHandler(async (req: Request, res: 
 	const input = req.body as GenerateProductVariationsInput;
 
 	const data = await catalogService.generateProductVariations(businessId, productId, input);
+	publishCatalogProductChanged({ businessId, productId });
 	res.status(StatusCodes.OK).json({ success: true, data });
 });
 
@@ -88,5 +92,6 @@ export const syncManualProductVariations = asyncHandler(async (req: Request, res
 	const input = req.body as SyncManualProductVariationsInput;
 
 	const data = await catalogService.syncManualProductVariations(businessId, productId, input);
+	publishCatalogProductChanged({ businessId, productId });
 	res.status(StatusCodes.OK).json({ success: true, data });
 });

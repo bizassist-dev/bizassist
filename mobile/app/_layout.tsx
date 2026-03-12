@@ -11,6 +11,8 @@ import { useTheme } from "react-native-paper";
 
 import { useAppBackground } from "@/lib/theme/appBackground";
 import { AuthProvider, useAuth } from "@/modules/auth/AuthContext";
+import { clearSessionScopedClientState } from "@/modules/auth/auth.sessionBoundary";
+import { RealtimeInvalidationBridge } from "@/modules/realtime/RealtimeInvalidationBridge";
 import { BAIAppProviders } from "@/providers/BAIAppProviders";
 
 // Keep native splash visible until the first React view is actually laid out.
@@ -33,7 +35,22 @@ function RootShell() {
 
 	const router = useRouter();
 	const segments = useSegments();
-	const { isAuthenticated, isBootstrapping } = useAuth();
+	const { user, isAuthenticated, isBootstrapping } = useAuth();
+	const authUserId = typeof user?.id === "string" ? user.id.trim() : "";
+	const sessionBoundaryKey = authUserId || "guest";
+	const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
+
+	useEffect(() => {
+		if (isBootstrapping) return;
+
+		const nextAuthUserId = authUserId || null;
+		const previousAuthUserId = previousAuthUserIdRef.current;
+		previousAuthUserIdRef.current = nextAuthUserId;
+
+		if (previousAuthUserId === undefined || previousAuthUserId !== nextAuthUserId) {
+			clearSessionScopedClientState();
+		}
+	}, [authUserId, isBootstrapping]);
 
 	// Hard eviction guard: unauthenticated users must never remain in (app)
 	useEffect(() => {
@@ -67,8 +84,10 @@ function RootShell() {
 				translucent={false}
 				{...(Platform.OS === "android" ? { backgroundColor: bg } : null)}
 			/>
+			{isAuthenticated ? <RealtimeInvalidationBridge /> : null}
 
 			<Stack
+				key={sessionBoundaryKey}
 				screenOptions={{
 					headerShown: false,
 					contentStyle: { backgroundColor: bg },

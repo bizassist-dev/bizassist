@@ -22,16 +22,19 @@ import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
 import type { InventoryScreenClass } from "@/modules/inventory/useInventoryHeader";
+import { patchProductImageCaches } from "@/modules/inventory/inventory.cache";
 import {
 	inventoryScopeRoot,
 	mapInventoryRouteToScope,
 	type InventoryRouteScope,
 } from "@/modules/inventory/navigation.scope";
 import { POS_TILE_MIN_SIZE_PX } from "@/modules/media/media.constants";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { uploadProductImage } from "@/modules/media/media.upload";
 import { toMediaDomainError } from "@/modules/media/media.errors";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { catalogKeys } from "@/modules/catalog/catalog.queries";
+import { patchPosCatalogImageCaches } from "@/modules/pos/pos.catalog.cache";
 import {
 	DRAFT_ID_KEY,
 	LOCAL_URI_KEY,
@@ -517,7 +520,7 @@ export default function MediaCropperScreen({
 			if (isItemPhoto) {
 				if (!productId) return;
 				try {
-					await uploadProductImage({
+					const uploaded = await uploadProductImage({
 						imageKind: "PRIMARY_POS_TILE",
 						localUri: finalOutput.uri,
 						productId,
@@ -525,9 +528,22 @@ export default function MediaCropperScreen({
 						sortOrder: 0,
 					});
 
+					const nextUpdatedAt = new Date().toISOString();
+					const nextPrimaryImageUrl = toCacheBustedImageUri(uploaded.publicUrl, nextUpdatedAt);
+					patchProductImageCaches(qc, productId, {
+						primaryImageUrl: nextPrimaryImageUrl,
+						updatedAt: nextUpdatedAt,
+					});
+					patchPosCatalogImageCaches(qc, {
+						productId,
+						primaryImageUrl: nextPrimaryImageUrl,
+						updatedAt: nextUpdatedAt,
+					});
+
 					await Promise.all([
 						qc.invalidateQueries({ queryKey: inventoryKeys.productDetail(productId) }),
 						qc.invalidateQueries({ queryKey: inventoryKeys.productsRoot() }),
+						qc.invalidateQueries({ queryKey: inventoryKeys.productsInfiniteRoot() }),
 						qc.invalidateQueries({ queryKey: ["pos", "catalog", "products"] }),
 						qc.invalidateQueries({ queryKey: catalogKeys.all }),
 					]);
@@ -535,7 +551,7 @@ export default function MediaCropperScreen({
 					const successReturnTo = rootReturnTo ?? returnTo;
 					router.replace({
 						pathname: successReturnTo as any,
-						params: { id: productId },
+						params: { id: productId, [LOCAL_URI_KEY]: finalOutput.uri },
 					});
 				} catch (e) {
 					const domain = toMediaDomainError(e);

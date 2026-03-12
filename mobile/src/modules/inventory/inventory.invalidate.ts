@@ -1,4 +1,5 @@
 // BizAssist_mobile path: src/modules/inventory/inventory.invalidate.ts
+import { catalogKeys } from "@/modules/catalog/catalog.queries";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import type { QueryClient } from "@tanstack/react-query";
 
@@ -9,6 +10,8 @@ import type { QueryClient } from "@tanstack/react-query";
  */
 export function invalidateInventoryAfterMutation(qc: QueryClient, opts?: { productId?: string }) {
 	qc.invalidateQueries({ queryKey: inventoryKeys.productsRoot() });
+	qc.invalidateQueries({ queryKey: catalogKeys.all });
+	qc.invalidateQueries({ queryKey: ["pos", "catalog", "products"] });
 
 	if (opts?.productId) {
 		qc.invalidateQueries({ queryKey: inventoryKeys.productDetail(opts.productId) });

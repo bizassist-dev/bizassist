@@ -646,12 +646,17 @@ export function ProductCreateVariationsScreen({ routeScope = "inventory" }: { ro
 						variant='exit'
 						onLeftPress={onBack}
 						onRightPress={onCreate}
+						rightRailWidth={96}
 						rightDisabled={
 							busy.isBusy ||
 							(generated.length > 0 ? selectedKeys.length === 0 : isManualMode ? !canCreateManual : false)
 						}
 						rightSlot={({ disabled }) => (
-							<BAIHeaderActionButton label={generated.length > 0 ? "Create" : "Done"} disabled={disabled} />
+							<BAIHeaderActionButton
+								label={generated.length > 0 ? 'Create' : 'Done'}
+								variant='solid-primary'
+								disabled={disabled}
+							/>
 						)}
 					/>
 					<BAISurface style={[styles.card, { borderColor }]} padded={false}>

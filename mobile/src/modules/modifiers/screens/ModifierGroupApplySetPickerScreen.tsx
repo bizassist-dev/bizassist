@@ -3,10 +3,10 @@ import { FlatList, Image, Pressable, StyleSheet, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import { BAIButton } from "@/components/ui/BAIButton";
 import { BAIHeader } from "@/components/ui/BAIHeader";
+import { BAIHeaderActionButton } from "@/components/ui/BAIHeaderActionButton";
 import { BAINeutralCheckbox } from "@/components/ui/BAINeutralCheckbox";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAIText } from "@/components/ui/BAIText";
@@ -207,7 +207,6 @@ async function listAllProductsAndServices() {
 export function ModifierGroupApplySetPickerScreen({ mode }: Props) {
 	const router = useRouter();
 	const theme = useTheme();
-	const tabBarHeight = useBottomTabBarHeight();
 	const params = useLocalSearchParams<{ draftId?: string; returnTo?: string }>();
 	const draftId = String(params.draftId ?? "").trim();
 	const backRoute = String(params.returnTo ?? "").trim() || "/(app)/(tabs)/inventory/modifiers/create";
@@ -308,30 +307,22 @@ export function ModifierGroupApplySetPickerScreen({ mode }: Props) {
 							variant='back'
 							onLeftPress={onBack}
 							onRightPress={onApplySelection}
+							rightRailWidth={96}
 							rightSlot={({ disabled }) => (
-								<View
-									style={[
-										styles.headerApplyButton,
-										{ backgroundColor: theme.colors.primary, opacity: disabled ? 0.5 : 1 },
-									]}
-								>
-									<BAIText variant='body' style={[styles.headerApplyLabel, { color: theme.colors.onPrimary }]}>
-										Apply
-									</BAIText>
-								</View>
+								<BAIHeaderActionButton label='Apply' variant='solid-primary' disabled={disabled} />
 							)}
 						/>
 					),
 				}}
 			/>
-			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false}>
-				<View style={[styles.screen, { paddingBottom: tabBarHeight + 8 }]}>
+			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} safeAreaGradientBottom>
+				<View style={styles.screen}>
 					<View style={styles.content}>
 						<View style={[styles.actionContainer, { borderColor, backgroundColor: theme.colors.surface }]}>
 							<View style={styles.actionRow}>
 								<BAIButton
-									variant='outline'
-									intent='neutral'
+									variant='solid'
+									intent='primary'
 									shape='pill'
 									onPress={onClearAll}
 									style={styles.actionButton}
@@ -340,8 +331,8 @@ export function ModifierGroupApplySetPickerScreen({ mode }: Props) {
 									Clear All
 								</BAIButton>
 								<BAIButton
-									variant='outline'
-									intent='neutral'
+									variant='solid'
+									intent='primary'
 									shape='pill'
 									onPress={onApplyAll}
 									style={styles.actionButton}
@@ -400,7 +391,6 @@ const styles = StyleSheet.create({
 	screen: {
 		flex: 1,
 		paddingHorizontal: 12,
-		paddingBottom: 12,
 		paddingTop: 0,
 	},
 	content: {
@@ -424,18 +414,6 @@ const styles = StyleSheet.create({
 	actionButton: {
 		flex: 1,
 	},
-	headerApplyButton: {
-		minWidth: 112,
-		height: 42,
-		borderRadius: 999,
-		alignItems: "center",
-		justifyContent: "center",
-		paddingHorizontal: 18,
-		marginRight: 12,
-	},
-	headerApplyLabel: {
-		fontWeight: "600",
-	},
 	listStateWrap: {
 		flex: 1,
 		minHeight: 0,
@@ -451,7 +429,7 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 	},
 	listContent: {
-		paddingBottom: 8,
+		paddingBottom: 0,
 	},
 	row: {
 		minHeight: 74,

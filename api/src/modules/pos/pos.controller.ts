@@ -4,6 +4,7 @@ import { StatusCodes } from "http-status-codes";
 
 import type { CheckoutInput } from "./pos.types";
 import { checkout } from "./pos.service";
+import { publishInventoryStockChanged } from "@/modules/realtime/realtime.events";
 
 function getBusinessId(req: Request): string {
 	// Canonical: authMiddleware + requireActiveBusiness populate req.user.activeBusinessId
@@ -24,6 +25,10 @@ export const handleCheckout = asyncHandler(async (req: Request, res: Response) =
 		activeBusinessId: businessId,
 		userId,
 		input,
+	});
+	publishInventoryStockChanged({
+		businessId,
+		productIds: result.sale.lineItems.map((lineItem) => lineItem.productId),
 	});
 
 	res.status(StatusCodes.OK).json({ success: true, data: result });

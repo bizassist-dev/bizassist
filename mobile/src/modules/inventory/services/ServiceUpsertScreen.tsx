@@ -27,6 +27,8 @@ import { BAITextarea } from "@/components/ui/BAITextarea";
 import { useAppBusy } from "@/hooks/useAppBusy";
 import { useAppToast } from "@/providers/AppToastProvider";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
+import { catalogKeys } from "@/modules/catalog/catalog.queries";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { useProcessExitGuard } from "@/modules/navigation/useProcessExitGuard";
 import {
 	CATEGORY_PICKER_ROUTE,
@@ -40,13 +42,14 @@ import {
 import { useProductCreateDraft } from "@/modules/inventory/drafts/useProductCreateDraft";
 import { useServiceCreateDraft } from "@/modules/inventory/drafts/useServiceCreateDraft";
 import { PosTileTextOverlay } from "@/modules/inventory/components/PosTileTextOverlay";
+import { patchProductImageCaches } from "@/modules/inventory/inventory.cache";
 import {
 	DEFAULT_SERVICE_SEGMENT_DURATION_MINUTES,
 	DEFAULT_SERVICE_TOTAL_DURATION_MINUTES,
 	type ServiceCreateDraft,
 } from "@/modules/inventory/drafts/serviceCreateDraft";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
-import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
+import { inventoryScopeRoot, mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { runGovernedExitReplace } from "@/modules/inventory/navigation.governance";
 import {
@@ -64,6 +67,7 @@ import { DurationWheelAccordion } from "@/modules/inventory/services/components/
 import { clampDurationMinutes, SERVICE_DURATION_MAX_MINUTES } from "@/modules/inventory/services/serviceDuration";
 import { uploadProductImage } from "@/modules/media/media.upload";
 import { toMediaDomainError } from "@/modules/media/media.errors";
+import { patchPosCatalogImageCaches, patchPosCatalogProductCaches } from "@/modules/pos/pos.catalog.cache";
 import {
 	buildModifierSelectionParams,
 	MODIFIER_PICKER_ROUTE,
@@ -73,9 +77,11 @@ import {
 	RETURN_TO_KEY as MODIFIER_RETURN_TO_KEY,
 } from "@/modules/modifiers/modifierPicker.contract";
 import { unitsApi } from "@/modules/units/units.api";
+import { syncUnitListCaches } from "@/modules/units/units.cache";
 import { unitKeys } from "@/modules/units/units.queries";
 import type { Unit } from "@/modules/units/units.types";
 import { FIELD_LIMITS } from "@/shared/fieldLimits";
+import { posTileLabelRegex } from "@/shared/validation/patterns";
 import {
 	sanitizeDescriptionDraftInput,
 	sanitizeDescriptionInput,
@@ -86,6 +92,8 @@ import {
 } from "@/shared/validation/sanitize";
 
 const DEFAULT_SERVICE_TILE_COLOR = "#616161";
+const DEFAULT_SERVICE_TIME_CATALOG_ID = "hr" as const;
+const DEFAULT_SERVICE_TIME_PRECISION = 2;
 
 type ServiceUpsertMode = "create" | "edit";
 type SaveTarget = "detail" | "addAnother";
@@ -113,6 +121,30 @@ function normalizeDurationOrNull(value: unknown): number | null {
 	const n = Math.trunc(value);
 	if (n < 0 || n > SERVICE_DURATION_MAX_MINUTES) return null;
 	return n;
+}
+
+function validateOptionalPosTileLabel(label: string): string | null {
+	const trimmed = label.trim();
+	if (!trimmed) return null;
+	if (trimmed.length < FIELD_LIMITS.posTileLabelMin) {
+		return `POS tile label must be at least ${FIELD_LIMITS.posTileLabelMin} characters.`;
+	}
+	if (!posTileLabelRegex.test(trimmed)) {
+		return "POS tile label contains invalid characters.";
+	}
+	return null;
+}
+
+function getFirstValidationFieldMessage(payload: any): string | null {
+	const fields = payload?.data?.fields;
+	if (!fields || typeof fields !== "object") return null;
+	for (const value of Object.values(fields)) {
+		if (Array.isArray(value)) {
+			const message = value.find((item) => typeof item === "string" && item.trim().length > 0);
+			if (message) return message;
+		}
+	}
+	return null;
 }
 
 function pickDefaultServiceUnit(units: Unit[]): Unit | null {
@@ -314,6 +346,7 @@ export function ServiceUpsertScreen(props: {
 	const [confirmExitOpen, setConfirmExitOpen] = useState(false);
 	const missingIdLoggedRef = useRef(false);
 	const loadErrorLoggedRef = useRef<string | null>(null);
+	const serviceUnitAutoEnableRef = useRef(false);
 
 	const navLockRef = useRef(false);
 	const [isNavLocked, setIsNavLocked] = useState(false);
@@ -330,6 +363,7 @@ export function ServiceUpsertScreen(props: {
 
 	const isUiDisabled = appBusy.busy.isBusy || isNavLocked;
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
+	const inventoryServicesRootRoute = useMemo(() => `${inventoryScopeRoot(routeScope)}?type=SERVICES`, [routeScope]);
 
 	const detailQuery = useQuery({
 		queryKey: inventoryKeys.productDetail(resolvedServiceId),
@@ -384,12 +418,16 @@ export function ServiceUpsertScreen(props: {
 	});
 
 	const defaultServiceUnit = useMemo(() => pickDefaultServiceUnit(unitsQuery.data ?? []), [unitsQuery.data]);
+	const effectiveServiceUnitId = useMemo(
+		() => draft.unitId.trim() || defaultServiceUnit?.id?.trim() || "",
+		[draft.unitId, defaultServiceUnit?.id],
+	);
 	const isServiceDraftPristine = useMemo(() => {
 		if (hasValue(draft.name)) return false;
 		if (hasValue(draft.categoryId) || hasValue(draft.categoryName)) return false;
 		if (hasValue(draft.priceText)) return false;
 		if (hasValue(draft.description)) return false;
-		if (hasValue(draft.unitId)) return false;
+		if (hasValue(draft.unitId) && draft.unitId.trim() !== (defaultServiceUnit?.id ?? "")) return false;
 		if (draft.processingEnabled) return false;
 		if (draft.durationTotalMinutes !== DEFAULT_SERVICE_TOTAL_DURATION_MINUTES) return false;
 		const initial = normalizeDurationOrNull(draft.durationInitialMinutes);
@@ -411,6 +449,7 @@ export function ServiceUpsertScreen(props: {
 		draft.priceText,
 		draft.processingEnabled,
 		draft.unitId,
+		defaultServiceUnit?.id,
 	]);
 	const mediaDraftTileLabelTouched = Boolean(mediaDraft.posTileLabelTouched);
 	const isMediaDraftPristine = useMemo(() => {
@@ -431,6 +470,27 @@ export function ServiceUpsertScreen(props: {
 		if (!defaultServiceUnit) return;
 		setDraft((prev) => (prev.unitId ? prev : { ...prev, unitId: defaultServiceUnit.id }));
 	}, [defaultServiceUnit, setDraft]);
+
+	useEffect(() => {
+		if (defaultServiceUnit) return;
+		if (draft.unitId.trim()) return;
+		if (serviceUnitAutoEnableRef.current || !unitsQuery.isFetched) return;
+
+		serviceUnitAutoEnableRef.current = true;
+		unitsApi
+			.enableCatalogUnit({
+				intent: "ENABLE_CATALOG",
+				catalogId: DEFAULT_SERVICE_TIME_CATALOG_ID,
+				precisionScale: DEFAULT_SERVICE_TIME_PRECISION,
+			})
+			.then((unit) => {
+				syncUnitListCaches(queryClient, unit);
+				setDraft((prev) => (prev.unitId ? prev : { ...prev, unitId: unit.id }));
+			})
+			.catch(() => {
+				serviceUnitAutoEnableRef.current = false;
+			});
+	}, [defaultServiceUnit, draft.unitId, queryClient, setDraft, unitsQuery.isFetched]);
 
 	const categorySelection = useMemo(() => parseCategorySelectionParams(params as any), [params]);
 	const modifierSelection = useMemo(() => parseModifierSelectionParams(params as any), [params]);
@@ -605,7 +665,7 @@ export function ServiceUpsertScreen(props: {
 	const remoteImageUri = useMemo(() => {
 		if (mode !== "edit") return "";
 		const detail = detailQuery.data as any;
-		return String(detail?.primaryImageUrl ?? "").trim();
+		return toCacheBustedImageUri(detail?.primaryImageUrl, detail?.updatedAt);
 	}, [detailQuery.data, mode]);
 
 	const localImageUri = useMemo(() => String(mediaDraft.imageLocalUri ?? "").trim(), [mediaDraft.imageLocalUri]);
@@ -633,7 +693,7 @@ export function ServiceUpsertScreen(props: {
 		if ((draft.modifierGroupIds?.length ?? 0) > 0) return true;
 		if (hasValue(draft.priceText)) return true;
 		if (hasValue(draft.description)) return true;
-		if (hasValue(draft.unitId)) return true;
+		if (hasValue(draft.unitId) && draft.unitId.trim() !== (defaultServiceUnit?.id ?? "")) return true;
 		if (draft.processingEnabled) return true;
 		if (draft.durationTotalMinutes !== DEFAULT_SERVICE_TOTAL_DURATION_MINUTES) return true;
 		if (hasValue(mediaDraft.imageLocalUri)) return true;
@@ -641,7 +701,7 @@ export function ServiceUpsertScreen(props: {
 		if (mediaDraft.posTileMode === "IMAGE") return true;
 		if (isHexColor(mediaDraft.posTileColor) && mediaDraft.posTileColor !== DEFAULT_SERVICE_TILE_COLOR) return true;
 		return false;
-	}, [draft, mediaDraft, mode]);
+	}, [defaultServiceUnit?.id, draft, mediaDraft, mode]);
 
 	const onExit = useCallback(() => {
 		if (mode === "create" && hasDirtyInput) {
@@ -770,6 +830,10 @@ export function ServiceUpsertScreen(props: {
 			const safeName = sanitizeServiceNameInput(draft.name).trim();
 			const safePrice = toMoneyOrNull(draft.priceText);
 			if (!safeName || safePrice == null) return;
+			if (!effectiveServiceUnitId) {
+				setError("Service unit is still loading. Try again in a moment.");
+				return;
+			}
 			setError(null);
 			const safeInitial = normalizeDurationOrNull(draft.durationInitialMinutes);
 			const safeProcessing = normalizeDurationOrNull(draft.durationProcessingMinutes);
@@ -781,6 +845,11 @@ export function ServiceUpsertScreen(props: {
 			const payloadDurationInitial = draft.processingEnabled ? draft.durationInitialMinutes : effectiveTotalMinutes;
 			const payloadDurationProcessing = draft.processingEnabled ? draft.durationProcessingMinutes : 0;
 			const payloadDurationFinal = draft.processingEnabled ? draft.durationFinalMinutes : 0;
+			const tileLabelError = validateOptionalPosTileLabel(tileLabel);
+			if (tileLabelError) {
+				setError(tileLabelError);
+				return;
+			}
 
 			await appBusy.withBusy("Saving Service…", async () => {
 				const payload = {
@@ -791,7 +860,7 @@ export function ServiceUpsertScreen(props: {
 					description: sanitizeServiceDescriptionFinal(draft.description).trim() || undefined,
 					price: safePrice,
 					trackInventory: false,
-					unitId: draft.unitId.trim() || undefined,
+					unitId: effectiveServiceUnitId,
 					durationTotalMinutes: effectiveTotalMinutes,
 					processingEnabled: draft.processingEnabled,
 					durationInitialMinutes: payloadDurationInitial,
@@ -806,20 +875,34 @@ export function ServiceUpsertScreen(props: {
 					let id = resolvedServiceId;
 					if (mode === "create") {
 						const created = await inventoryApi.createProduct(payload as any);
+						patchPosCatalogProductCaches(queryClient, created);
 						id = String((created as any)?.id ?? "").trim();
 					} else {
 						if (!id) throw new Error("Missing service id.");
-						await inventoryApi.updateProduct(id, payload as any);
+						const updated = await inventoryApi.updateProduct(id, payload as any);
+						patchPosCatalogProductCaches(queryClient, updated);
 					}
 
 					if (id && tileMode === "IMAGE" && localImageUri) {
 						try {
-							await uploadProductImage({
+							const uploaded = await uploadProductImage({
 								imageKind: "PRIMARY_POS_TILE",
 								localUri: localImageUri,
 								productId: id,
 								isPrimary: true,
 								sortOrder: 0,
+							});
+
+							const nextUpdatedAt = new Date().toISOString();
+							const nextPrimaryImageUrl = toCacheBustedImageUri(uploaded.publicUrl, nextUpdatedAt);
+							patchProductImageCaches(queryClient, id, {
+								primaryImageUrl: nextPrimaryImageUrl,
+								updatedAt: nextUpdatedAt,
+							});
+							patchPosCatalogImageCaches(queryClient, {
+								productId: id,
+								primaryImageUrl: nextPrimaryImageUrl,
+								updatedAt: nextUpdatedAt,
 							});
 						} catch (uploadErr) {
 							const domainErr = toMediaDomainError(uploadErr);
@@ -829,6 +912,10 @@ export function ServiceUpsertScreen(props: {
 					}
 
 					queryClient.invalidateQueries({ queryKey: inventoryKeys.productsRoot() as any });
+					queryClient.invalidateQueries({ queryKey: inventoryKeys.productsInfiniteRoot() as any });
+					queryClient.invalidateQueries({ queryKey: inventoryKeys.all as any });
+					queryClient.invalidateQueries({ queryKey: catalogKeys.all as any });
+					queryClient.invalidateQueries({ queryKey: ["pos", "catalog", "products"] as any });
 					if (id) {
 						queryClient.invalidateQueries({ queryKey: inventoryKeys.productDetail(id) as any });
 					}
@@ -850,6 +937,11 @@ export function ServiceUpsertScreen(props: {
 						resetMediaDraft();
 					}
 
+					if (mode === "create") {
+						router.replace(inventoryServicesRootRoute as any);
+						return;
+					}
+
 					if (id) {
 						router.replace(toScopedRoute(`/(app)/(tabs)/inventory/services/${encodeURIComponent(id)}`) as any);
 						return;
@@ -865,6 +957,7 @@ export function ServiceUpsertScreen(props: {
 						return;
 					}
 					const backendMessage =
+						getFirstValidationFieldMessage(payloadErr) ??
 						payloadErr?.message ??
 						payloadErr?.error ??
 						payloadErr?.errorMessage ??
@@ -878,8 +971,10 @@ export function ServiceUpsertScreen(props: {
 			appBusy,
 			draft,
 			defaultServiceUnit?.id,
+			effectiveServiceUnitId,
 			exitRoute,
 			isUiDisabled,
+			inventoryServicesRootRoute,
 			localImageUri,
 			mediaDraft.posTileLabel,
 			mode,
@@ -890,6 +985,7 @@ export function ServiceUpsertScreen(props: {
 			resolvedServiceId,
 			showSuccess,
 			tileColor,
+			tileLabel,
 			tileMode,
 			toScopedRoute,
 			validation.isValid,
@@ -897,6 +993,7 @@ export function ServiceUpsertScreen(props: {
 	);
 	const onSaveDetail = useCallback(() => onSave("detail"), [onSave]);
 	const onSaveAndAddAnother = useCallback(() => onSave("addAnother"), [onSave]);
+	const isSaveDisabled = isUiDisabled || !validation.isValid || !effectiveServiceUnitId;
 
 	const screenBottomPad = tabBarHeight + 12;
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
@@ -1163,7 +1260,7 @@ export function ServiceUpsertScreen(props: {
 										</BAICTAPillButton>
 										<BAICTAPillButton
 											onPress={onSaveDetail}
-											disabled={isUiDisabled || !validation.isValid}
+											disabled={isSaveDisabled}
 											style={styles.actionButton}
 										>
 											Save
@@ -1173,7 +1270,7 @@ export function ServiceUpsertScreen(props: {
 										<BAIButton
 											variant='solid'
 											onPress={onSaveAndAddAnother}
-											disabled={isUiDisabled || !validation.isValid}
+											disabled={isSaveDisabled}
 											style={styles.saveAnotherButton}
 											intent='primary'
 										>

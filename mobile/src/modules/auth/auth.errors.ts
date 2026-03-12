@@ -6,6 +6,8 @@ export type AuthErrorCode =
 	| "EMAIL_ALREADY_REGISTERED"
 	| "INVALID_CREDENTIALS"
 	| "EMAIL_VERIFICATION_REQUIRED"
+	| "DEVICE_LIMIT_REACHED"
+	| "DEVICE_SESSION_NOT_FOUND"
 	| "VALIDATION_ERROR"
 	| "NETWORK_ERROR"
 	| "RATE_LIMITED"
@@ -25,6 +27,8 @@ export interface AuthDomainError extends Error {
 	cooldownSeconds?: number;
 	expiresInSeconds?: number;
 	cooldownSecondsRemaining?: number;
+	maxDevices?: number;
+	activeDeviceCount?: number;
 }
 
 const extractApiErrorPayload = (error: any): { status?: number; data?: any } => {
@@ -69,6 +73,18 @@ export const toAuthDomainError = (error: unknown): AuthDomainError => {
 
 	const cooldownSecondsRemainingFromPayload: number | undefined =
 		details?.cooldownSecondsRemaining ?? data?.cooldownSecondsRemaining ?? undefined;
+	const maxDevicesFromPayload: number | undefined =
+		typeof details?.maxDevices === "number"
+			? details.maxDevices
+			: typeof data?.maxDevices === "number"
+				? data.maxDevices
+				: undefined;
+	const activeDeviceCountFromPayload: number | undefined =
+		typeof details?.activeDeviceCount === "number"
+			? details.activeDeviceCount
+			: typeof data?.activeDeviceCount === "number"
+				? data.activeDeviceCount
+				: undefined;
 
 	let fieldErrors: Record<string, string> | undefined;
 
@@ -95,6 +111,12 @@ export const toAuthDomainError = (error: unknown): AuthDomainError => {
 	} else if (backendCode === "RESET_TICKET_INVALID_OR_EXPIRED") {
 		code = "RESET_TICKET_INVALID_OR_EXPIRED";
 		message = backendMessage ?? "Reset session expired. Please request a new code.";
+	} else if (backendCode === "DEVICE_LIMIT_REACHED") {
+		code = "DEVICE_LIMIT_REACHED";
+		message = backendMessage ?? "Device limit reached for this account.";
+	} else if (backendCode === "DEVICE_SESSION_NOT_FOUND") {
+		code = "DEVICE_SESSION_NOT_FOUND";
+		message = backendMessage ?? "That device session no longer exists.";
 	} else if (status === 409) {
 		code = "EMAIL_ALREADY_REGISTERED";
 		message = backendMessage ?? "This email is already registered.";
@@ -124,7 +146,27 @@ export const toAuthDomainError = (error: unknown): AuthDomainError => {
 		cooldownSeconds: cooldownSecondsFromPayload,
 		expiresInSeconds: expiresInSecondsFromPayload,
 		cooldownSecondsRemaining: cooldownSecondsRemainingFromPayload,
+		maxDevices: maxDevicesFromPayload,
+		activeDeviceCount: activeDeviceCountFromPayload,
 	};
+};
+
+export const getAuthHelperText = (error: AuthDomainError): string | null => {
+	switch (error.code) {
+		case "DEVICE_LIMIT_REACHED": {
+			const count = typeof error.activeDeviceCount === "number" ? error.activeDeviceCount : null;
+			const max = typeof error.maxDevices === "number" ? error.maxDevices : null;
+			if (count != null && max != null) {
+				return `${count} of ${max} device slots are currently in use. Remove an old device from Settings > Devices on another signed-in phone, then try again.`;
+			}
+			if (max != null) {
+				return `This account allows up to ${max} active devices. Remove an old device from Settings > Devices on another signed-in phone, then try again.`;
+			}
+			return "Remove an old device from Settings > Devices on another signed-in phone, then try again.";
+		}
+		default:
+			return null;
+	}
 };
 
 export const mapAuthErrorToMessage = (error: AuthDomainError): string => {
@@ -137,6 +179,10 @@ export const mapAuthErrorToMessage = (error: AuthDomainError): string => {
 			return "Invalid email or password.";
 		case "EMAIL_VERIFICATION_REQUIRED":
 			return "Email verification required.";
+		case "DEVICE_LIMIT_REACHED":
+			return "This account has reached its device limit. Remove an old device or sign out elsewhere.";
+		case "DEVICE_SESSION_NOT_FOUND":
+			return "That device session was already removed.";
 		case "RATE_LIMITED":
 			return "Too many requests. Please try again later.";
 		case "INVALID_OR_EXPIRED_OTP":

@@ -16,7 +16,7 @@
 //   - Catalog tab: Catalog list + Cart SUMMARY (item count + total)
 //   - Cart tab: Full cart list + totals + quantity controls + Charge CTA
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +24,6 @@ import {
 	FlatList,
 	Keyboard,
 	Pressable,
-	RefreshControl,
 	StyleSheet,
 	TouchableWithoutFeedback,
 	View,
@@ -41,6 +40,7 @@ import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
+import { useAuth } from "@/modules/auth/AuthContext";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
 import type { CatalogProduct } from "@/modules/catalog/catalog.types";
@@ -64,10 +64,13 @@ import {
 } from "@/modules/pos/pos.quantity";
 import { PosCatalogListShell } from "@/modules/pos/components/PosCatalogListShell";
 import { posApi } from "@/modules/pos/pos.api";
+import { getPosCatalogPlaceholderData } from "@/modules/pos/pos.catalog.cache";
 import { PosModifiersPickerSheet } from "@/modules/pos/components/PosModifiersPickerSheet";
 import type { ProductModifierGroup } from "@/modules/pos/pos.api";
 import { unitDisplayToken } from "@/modules/units/units.format";
 import { useNavLock } from "@/shared/hooks/useNavLock";
+import { useInsertedRowAttention } from "@/shared/hooks/useInsertedRowAttention";
+import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 import { formatMoney } from "@/shared/money/money.format";
 
 type CartLine = {
@@ -308,7 +311,9 @@ function toPosCatalogInventoryRowItem(product: CatalogProduct, onHandRaw: string
 		},
 		trackInventory: !!product.trackInventory,
 		durationTotalMinutes:
-			durationTotalMinutes == null || !Number.isFinite(Number(durationTotalMinutes)) ? null : Number(durationTotalMinutes),
+			durationTotalMinutes == null || !Number.isFinite(Number(durationTotalMinutes))
+				? null
+				: Number(durationTotalMinutes),
 		processingEnabled,
 		durationInitialMinutes:
 			durationInitialMinutes == null || !Number.isFinite(Number(durationInitialMinutes))
@@ -319,7 +324,9 @@ function toPosCatalogInventoryRowItem(product: CatalogProduct, onHandRaw: string
 				? null
 				: Number(durationProcessingMinutes),
 		durationFinalMinutes:
-			durationFinalMinutes == null || !Number.isFinite(Number(durationFinalMinutes)) ? null : Number(durationFinalMinutes),
+			durationFinalMinutes == null || !Number.isFinite(Number(durationFinalMinutes))
+				? null
+				: Number(durationFinalMinutes),
 		reorderPoint: product.reorderPoint == null ? null : Number(product.reorderPoint),
 		reorderPointRaw: product.reorderPoint ?? undefined,
 		onHandCached: Number(onHandRaw) || 0,
@@ -338,11 +345,14 @@ function toPosCatalogInventoryRowItem(product: CatalogProduct, onHandRaw: string
 
 export default function PosPhone() {
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const params = useLocalSearchParams<{ scannedBarcode?: string }>();
 	const theme = useTheme();
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const { user } = useAuth();
+	const authUserId = typeof user?.id === "string" ? user.id.trim() : "";
 
-	const { currencyCode, businessName, countryCode } = useActiveBusinessMeta();
+	const { currencyCode, businessName, countryCode, businessId } = useActiveBusinessMeta();
 	const { withBusy } = useAppBusy();
 
 	// Primary nav safety gate (canonical hook)
@@ -370,12 +380,25 @@ export default function PosPhone() {
 	const [modifierPickerGroups, setModifierPickerGroups] = useState<ProductModifierGroup[]>([]);
 	const [loadingModifierProductId, setLoadingModifierProductId] = useState<string | null>(null);
 	const dismissKeyboard = useCallback(() => Keyboard.dismiss(), []);
+	const sessionScopeKey = `${authUserId || "guest"}:${businessId || "no-business"}`;
+	const lastSessionScopeKeyRef = useRef<string | null>(null);
+	const operationalRefreshInterval = useOperationalQueryAutoRefresh({ enabled: !!businessId });
 
 	const productsQuery = useQuery({
-		queryKey: ["pos", "catalog", "products", trimmedQ],
-		queryFn: () => inventoryApi.listProducts({ q: trimmedQ || undefined, limit: 100 }),
+		queryKey: ["pos", "catalog", "products", businessId || "no-business", trimmedQ],
+		queryFn: ({ signal }) => inventoryApi.listProducts({ q: trimmedQ || undefined, limit: 100 }, { signal }),
+		enabled: !!businessId,
 		staleTime: 30_000,
-	});
+			refetchInterval: operationalRefreshInterval,
+			refetchIntervalInBackground: false,
+			placeholderData: (previousData) => {
+				if (previousData) return previousData;
+				return getPosCatalogPlaceholderData(queryClient, {
+					businessId: businessId || "no-business",
+					search: trimmedQ,
+				}) as unknown as typeof previousData;
+			},
+		});
 
 	const items = useMemo(
 		() => (productsQuery.data?.items ?? []) as unknown as CatalogProduct[],
@@ -408,6 +431,20 @@ export default function PosPhone() {
 	useEffect(() => {
 		setCatalogGroup(defaultCatalogGroup);
 	}, [defaultCatalogGroup]);
+
+	useEffect(() => {
+		if (lastSessionScopeKeyRef.current === sessionScopeKey) return;
+		lastSessionScopeKeyRef.current = sessionScopeKey;
+		setTab("CATALOG");
+		setCatalogGroup("ITEMS");
+		setQ("");
+		setCart({});
+		setModifierPickerVisible(false);
+		setModifierPickerProduct(null);
+		setModifierPickerGroups([]);
+		setLoadingModifierProductId(null);
+		router.setParams({ scannedBarcode: undefined } as any);
+	}, [router, sessionScopeKey]);
 	const visibleCatalogItems = useMemo(() => {
 		const showServices = catalogGroup === "SERVICES";
 		return items.filter((product) => {
@@ -415,6 +452,13 @@ export default function PosPhone() {
 			return showServices ? isService : !isService;
 		});
 	}, [catalogGroup, items]);
+	const rowAttentionTokens = useInsertedRowAttention(
+		useMemo(() => visibleCatalogItems.map((item) => item.id), [visibleCatalogItems]),
+		{
+			scopeKey: `${businessId || "no-business"}:${tab}:${catalogGroup}:${trimmedQ}`,
+		},
+	);
+	const isCatalogBlockingLoad = productsQuery.isLoading && items.length === 0;
 	const posTabs = useMemo(
 		() =>
 			[
@@ -464,10 +508,6 @@ export default function PosPhone() {
 	});
 
 	const canCheckout = canNavigate && cartLines.length > 0 && !checkoutMutation.isPending;
-
-	const onRefresh = useCallback(() => {
-		productsQuery.refetch();
-	}, [productsQuery]);
 
 	const onOpenScanner = useCallback(() => {
 		if (disabled) return;
@@ -849,7 +889,7 @@ export default function PosPhone() {
 										showTitleAndCount={false}
 										showSyncBadge={false}
 										containerStyle={styles.listShellNoContainer}
-										isLoading={productsQuery.isLoading}
+										isLoading={isCatalogBlockingLoad}
 										isFetching={productsQuery.isFetching}
 										isError={isTrulyError}
 										onRetry={() => productsQuery.refetch()}
@@ -870,12 +910,6 @@ export default function PosPhone() {
 												keyExtractor={(p) => p.id}
 												contentContainerStyle={styles.listContent}
 												showsVerticalScrollIndicator={false}
-												refreshControl={
-													<RefreshControl
-														refreshing={productsQuery.isFetching && !productsQuery.isLoading}
-														onRefresh={onRefresh}
-													/>
-												}
 												ItemSeparatorComponent={() => <View style={styles.listItemGap} />}
 												renderItem={({ item }) => {
 													const inCartLine = cart[item.id];
@@ -885,6 +919,7 @@ export default function PosPhone() {
 													return (
 														<InventoryRow
 															item={rowItem}
+															attentionPulseKey={rowAttentionTokens[item.id]}
 															showOnHandUnit={false}
 															categoryColor={item.categoryColor}
 															onPress={() => addToCart(item)}
@@ -1018,8 +1053,8 @@ const styles = StyleSheet.create({
 	headerSection: {
 		paddingHorizontal: 0,
 		paddingTop: POS_HEADER_CARD_PAD_TOP,
-		paddingBottom: POS_HEADER_CARD_PAD_BOTTOM,
-		marginBottom: POS_SECTION_GAP,
+		paddingBottom: 4,
+		marginBottom: POS_SECTION_GAP_SM,
 	},
 	header: {
 		paddingTop: 0,
@@ -1045,7 +1080,7 @@ const styles = StyleSheet.create({
 	tabsWrap: { paddingHorizontal: 0 },
 	searchWrap: { marginTop: 6 },
 	catalogFilterTabsWrap: { marginTop: 6 },
-	listContent: { paddingBottom: 16 },
+	listContent: { paddingBottom: 200 },
 	listItemGap: { height: 8 },
 	sep: { height: POS_BORDER_WIDTH },
 	listShellNoContainer: {

@@ -86,3 +86,9 @@ Because geometry metadata may vary by device/OS:
 - Implement behind existing scanner flow with no API change.
 - Validate with targeted QA in POS and Inventory workflows.
 - If field regressions are detected, keep fallback path to current acceptance behavior temporarily while collecting device-specific data.
+
+## 10) Operational Notes (Close-Focus Reliability)
+
+- Some close-range barcode blur on iOS can be device-camera-settings dependent, not only app configuration.
+- During QA/support triage, verify device Camera settings before escalating scanner code changes.
+- Treat this as a first-step checklist item when users report "barcode is blurry when close to camera".

@@ -31,6 +31,7 @@ export type ActiveBusinessMeta = {
 
 	// Presence gate
 	hasBusiness: boolean;
+	businessId: string;
 
 	// Core display fields (already normalized)
 	businessName: string;
@@ -78,6 +79,7 @@ export function useActiveBusinessMeta(): ActiveBusinessMeta {
 
 	const derived = useMemo(() => {
 		const hasBusiness = Boolean(activeBusiness?.id);
+		const businessId = safeString(activeBusiness?.id);
 
 		const businessName = safeString(activeBusiness?.name);
 
@@ -103,6 +105,7 @@ export function useActiveBusinessMeta(): ActiveBusinessMeta {
 
 		return {
 			hasBusiness,
+			businessId,
 			businessName,
 			countryCode,
 			countryName,
@@ -119,6 +122,7 @@ export function useActiveBusinessMeta(): ActiveBusinessMeta {
 		refetch,
 
 		hasBusiness: derived.hasBusiness,
+		businessId: derived.businessId,
 		businessName: derived.businessName,
 		countryCode: derived.countryCode,
 		countryName: derived.countryName,

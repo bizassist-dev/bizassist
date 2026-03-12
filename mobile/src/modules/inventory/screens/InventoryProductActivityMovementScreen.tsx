@@ -21,6 +21,7 @@ import { BAITimeAgo } from "@/components/system/BAITimeAgo";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import type { InventoryMovement, InventoryProductDetail } from "@/modules/inventory/inventory.types";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
+import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { unitDisplayToken } from "@/modules/units/units.format";
 import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 
@@ -254,8 +255,10 @@ export default function InventoryMovementDetailScreen() {
 
 	const productName = productDetailQuery.data?.name?.trim() ? productDetailQuery.data?.name : "Item";
 	const imageUri = useMemo(() => {
-		const raw = (productDetailQuery.data as any)?.primaryImageUrl;
-		return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+		return toCacheBustedImageUri(
+			(productDetailQuery.data as any)?.primaryImageUrl,
+			(productDetailQuery.data as any)?.updatedAt,
+		);
 	}, [productDetailQuery.data]);
 	const hasImage = Boolean(imageUri);
 	const unitPrecisionScale = useMemo(

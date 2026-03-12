@@ -16,6 +16,129 @@ Quick index:
 - See **2026-03-07 — Scanner Frame-Gated Acceptance + POS Wrapper Flow Lock** for scanner in-frame acceptance and workspace-isolated scan routing.
 - See **2026-03-07 — Universal Scan Action-Hub Lock** for non-contextual bottom-tab scanner behavior and dynamic post-scan action section governance.
 - See **2026-03-07 — Scanner UI Layout and Screen Space Optimization Lock** for scanner zone layout, responsive scan-box sizing, and universal action section spacing governance.
+- See **2026-03-12 — Session Boundary + Cross-User State Reset Lock** for logout/login isolation, query-cache purge, mounted-screen remount, and ephemeral state cleanup governance.
+- See **2026-03-12 — Inventory Realtime Image Sync Lock** for product/service create-edit photo upload sequencing and query-cache patching governance.
+- See **2026-03-12 — Realtime Invalidation Architecture Lock** for cross-device inventory/POS convergence via business-scoped websocket invalidation.
+- See **2026-03-12 — Operational Sync Badge vs Pull-To-Refresh Lock** for Inventory/POS row-list sync UX governance under realtime invalidation.
+- See **2026-03-12 — Auth Device Cap Lock** for install-scoped device binding and active-device session cap governance.
+
+## 2026-03-12 — Inventory Realtime Image Sync Lock
+
+### Memory Lock
+
+- Canonical policy name is **Inventory Realtime Image Sync**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.4 Storage buckets and delivery policy (CDN + cache correctness)`
+
+### Locked Decisions
+
+- Inventory and service create/edit flows that upload a tile/photo after the main entity save must not invalidate list/detail queries before the image upload finishes.
+- Required sequence is:
+  - save base product/service
+  - upload image
+  - patch React Query caches with `primaryImageUrl` and a fresh `updatedAt`
+  - invalidate inventory detail/list plus catalog/POS caches
+  - navigate/return
+- Inventory list-row thumbnails must use cache-busted public URLs derived from `updatedAt` so the latest uploaded image appears immediately.
+- The same sequencing rule applies to both product and service flows to avoid parity regressions.
+
+### Enforcement
+
+- Any inventory photo/tile mutation that only invalidates queries after a base save, without a post-upload cache patch, is considered incomplete.
+- Realtime image regressions must be fixed by correcting mutation sequencing and cache updates first, not by telling users to pull-to-refresh or revisit the detail screen.
+
+## 2026-03-12 — Realtime Invalidation Architecture Lock
+
+### Memory Lock
+
+- Canonical policy name is **Realtime Invalidation Architecture**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.7.1 Realtime Invalidation Governance (Locked)`
+
+### Locked Decisions
+
+- Cross-device operational convergence uses a business-scoped websocket invalidation channel.
+- Realtime events are invalidation signals only, not authoritative data payloads.
+- React Query remains the canonical client data layer; websocket messages only invalidate/refetch existing query keys.
+- Phase 1 events are intentionally narrow:
+  - `catalog.product.changed`
+  - `inventory.stock.changed`
+- Foreground polling remains as a slow fallback for reconnect gaps; it is no longer the primary convergence mechanism.
+- Shared fanout now runs through Postgres `LISTEN/NOTIFY`, while each API instance only delivers websocket events to its own connected sockets.
+- Multi-instance realtime correctness depends on publishing invalidation events through the shared Postgres channel, not through process-local memory alone.
+
+### Enforcement
+
+- New realtime work must preserve business scoping and must not bypass existing query-key governance with ad hoc state mutation.
+- Any future transport replacement must preserve shared fanout semantics before realtime behavior can be treated as globally reliable across instances.
+
+## 2026-03-12 — Operational Sync Badge vs Pull-To-Refresh Lock
+
+### Memory Lock
+
+- Canonical policy name is **Operational Sync Badge vs Pull-To-Refresh**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.7.1 Realtime Invalidation Governance (Locked)`
+
+### Locked Decisions
+
+- Inventory and POS operational row lists use the page-title sync badge as the canonical live-sync indicator.
+- Once realtime invalidation is active, those row lists must not attach native `RefreshControl` pull-to-refresh UI.
+- Background refetch, websocket-triggered invalidation, or polling fallback must not visually pull the list downward or show a native refresh spinner.
+- Explicit retry actions may remain on error/empty states, but passive sync must be badge-driven and layout-stable.
+- Slow polling fallback may still exist for reconnect gaps, but it must remain visually silent on operational row lists.
+
+### Enforcement
+
+- Any operational Inventory/POS list that reintroduces native pull-to-refresh while the sync badge is present is a UX regression.
+- Realtime/polling UX fixes must preserve row-list visual stability first; do not rely on native refresh spinners as passive sync feedback.
+
+## 2026-03-12 — Auth Device Cap Lock
+
+### Memory Lock
+
+- Canonical policy name is **Auth Device Cap**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `3.6.1 Auth Device Cap Governance (Locked)`
+
+### Locked Decisions
+
+- Device abuse protection is enforced at the auth/session boundary, not by inventory/POS feature screens.
+- The canonical cap is the number of active refresh-token-backed devices per user.
+- Mobile installs must persist a stable `deviceId` and send it on auth, authenticated API requests, and realtime websocket connects.
+- Newly issued JWTs are device-bound; protected requests from a different device than the token payload are invalid.
+- Settings includes a self-service device-management flow for listing and revoking active devices.
+- Legacy pre-device-bound sessions may survive until refresh rotation, but all new sessions must be device-bound.
+
+### Enforcement
+
+- Future auth changes must not bypass `deviceId` propagation on login, refresh, or authenticated requests.
+- Any alternative session store must preserve active-device cap enforcement before replacing the current refresh-token-backed implementation.
+
+## 2026-03-12 — Session Boundary + Cross-User State Reset Lock
+
+### Memory Lock
+
+- Canonical policy name is **Session Boundary + Cross-User State Reset**.
+- Canonical source document is:
+  - `docs/features/SESSION_BOUNDARY_CROSS_USER_STATE_RESET_MASTERPLAN_2026-03-12.md`
+
+### Locked Decisions
+
+- Any auth-user change is a hard client session boundary.
+- Session-boundary cleanup must clear:
+  - query cache
+  - active-business storage remnants
+  - module-level ephemeral handoff stores
+  - mounted authenticated route-tree state via shell remount
+- User/business-scoped operational queries must include the relevant scope in query keys.
+- Long-lived operational screens must reset local UI state when auth user or active business scope changes.
+- Avoid blanket storage wipes; clear only session-scoped state and registered ephemeral flow stores.
+
+### Enforcement
+
+- Cross-user stale UI bugs must be fixed at the auth/session boundary first, not only at the visible screen.
+- New operational features must review cached state, local state, and handoff state for session-boundary safety before merge.
 
 ## 2026-03-07 — Scanner Frame-Gated Acceptance + POS Wrapper Flow Lock
 
