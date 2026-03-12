@@ -220,9 +220,9 @@ export default function SettingsCategoryDetailScreen() {
 		(productId: string) => {
 			if (isUiDisabled) return;
 			if (!lockNav()) return;
-			router.push(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}` as any);
+			router.push(`/(app)/(tabs)/settings/categories/${encodeURIComponent(id)}/items/${encodeURIComponent(productId)}` as any);
 		},
-		[isUiDisabled, lockNav, router],
+		[id, isUiDisabled, lockNav, router],
 	);
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;

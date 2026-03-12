@@ -7,54 +7,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "react-native-paper";
 
+import { BAIBottomSafeAreaScrim } from "@/components/ui/BAIBottomSafeAreaScrim";
 import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { useAppBackground } from "@/lib/theme/appBackground";
 
 const TAB_BAR_HEIGHT = 64;
 const TAB_BAR_GUTTER = 12;
-const BOTTOM_SAFE_AREA_SCRIM_TAB_OVERFLOW = 32;
-const BOTTOM_SAFE_AREA_SCRIM_PLAIN_OVERFLOW = 24;
 
 function clampAlpha(value: number): number {
 	if (!Number.isFinite(value)) return 1;
 	return Math.max(0, Math.min(1, value));
-}
-
-function colorWithAlpha(color: string, alpha: number, fallbackDark: boolean): string {
-	const a = clampAlpha(alpha);
-	const raw = String(color ?? "").trim();
-	if (!raw) return fallbackDark ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
-
-	const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-	if (hex) {
-		const token = hex[1];
-		const full =
-			token.length === 3
-				? token
-						.split("")
-						.map((c) => `${c}${c}`)
-						.join("")
-				: token;
-		const r = parseInt(full.slice(0, 2), 16);
-		const g = parseInt(full.slice(2, 4), 16);
-		const b = parseInt(full.slice(4, 6), 16);
-		return `rgba(${r},${g},${b},${a})`;
-	}
-
-	const rgb = raw.match(/^rgba?\(([^)]+)\)$/i);
-	if (rgb) {
-		const parts = rgb[1]
-			.split(",")
-			.map((part) => part.trim())
-			.slice(0, 3)
-			.map((part) => Number(part));
-		if (parts.length === 3 && parts.every((part) => Number.isFinite(part))) {
-			const [r, g, b] = parts;
-			return `rgba(${r},${g},${b},${a})`;
-		}
-	}
-
-	return fallbackDark ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
 }
 
 export type BAIScreenProps = {
@@ -139,24 +101,10 @@ export function BAIScreen({
 	const showTopSafeGradient = safeAreaGradientTop && insets.top > 0;
 	const showBottomSafeGradient = safeAreaGradientBottom && insets.bottom > 0;
 	const topSafeHeight = insets.top + 20;
-	const bottomSafeHeight = tabbed
-		? insets.bottom + BOTTOM_SAFE_AREA_SCRIM_TAB_OVERFLOW
-		: insets.bottom + BOTTOM_SAFE_AREA_SCRIM_PLAIN_OVERFLOW;
 
 	const topSafeGradientColors = theme.dark
 		? (["rgba(0,0,0,0.62)", "rgba(0,0,0,0.24)", "rgba(0,0,0,0)"] as const)
 		: (["rgba(255,255,255,0.95)", "rgba(255,255,255,0.58)", "rgba(255,255,255,0)"] as const);
-	const bottomSafeGradientColors = theme.dark
-		? ([
-				colorWithAlpha(backgroundColor, 0, true),
-				colorWithAlpha(backgroundColor, 0.66, true),
-				colorWithAlpha(backgroundColor, 0.96, true),
-			] as const)
-		: ([
-				colorWithAlpha(backgroundColor, 0, false),
-				colorWithAlpha(backgroundColor, 0.6, false),
-				colorWithAlpha(backgroundColor, 0.9, false),
-			] as const);
 
 	/**
 	 * Base content styling shared by scroll + non-scroll.
@@ -199,11 +147,7 @@ export function BAIScreen({
 					/>
 				) : null}
 				{showBottomSafeGradient ? (
-					<LinearGradient
-						pointerEvents='none'
-						colors={bottomSafeGradientColors}
-						style={[styles.safeGradientOverlay, styles.safeGradientBottom, { height: bottomSafeHeight }]}
-					/>
+					<BAIBottomSafeAreaScrim tabbed={tabbed} />
 				) : null}
 			</View>
 		);
@@ -220,11 +164,7 @@ export function BAIScreen({
 				/>
 			) : null}
 			{showBottomSafeGradient ? (
-				<LinearGradient
-					pointerEvents='none'
-					colors={bottomSafeGradientColors}
-					style={[styles.safeGradientOverlay, styles.safeGradientBottom, { height: bottomSafeHeight }]}
-				/>
+				<BAIBottomSafeAreaScrim tabbed={tabbed} />
 			) : null}
 		</View>
 	);
@@ -248,8 +188,5 @@ const styles = StyleSheet.create({
 	},
 	safeGradientTop: {
 		top: 0,
-	},
-	safeGradientBottom: {
-		bottom: 0,
 	},
 });

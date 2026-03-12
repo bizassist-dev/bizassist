@@ -73,6 +73,7 @@ export default function InventoryStackLayout() {
 			<Stack.Screen name='categories/category.ledger' options={{ headerShown: false }} />
 			<Stack.Screen name='categories/create' options={{ title: "Create Category" }} />
 			<Stack.Screen name='categories/[id]/index' options={{ headerShown: false }} />
+			<Stack.Screen name='categories/[id]/items/[itemId]/index' options={{ headerShown: false }} />
 			<Stack.Screen name='categories/[id]/edit' options={{ title: "Edit Category" }} />
 			<Stack.Screen name='categories/[id]/archive' options={{ title: "Archive Category" }} />
 			<Stack.Screen name='categories/[id]/restore' options={{ title: "Restore Category" }} />

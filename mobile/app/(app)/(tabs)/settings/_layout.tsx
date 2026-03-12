@@ -59,6 +59,7 @@ export default function SettingsStackLayout() {
 			<Stack.Screen name='categories/index' options={{ headerShown: false }} />
 			<Stack.Screen name='categories/categories.ledger' options={{ headerShown: false }} />
 			<Stack.Screen name='categories/[id]/index' options={{ headerShown: false }} />
+			<Stack.Screen name='categories/[id]/items/[itemId]/index' options={{ headerShown: false }} />
 			<Stack.Screen name='modifiers/index' options={{ headerShown: false }} />
 		</Stack>
 	);

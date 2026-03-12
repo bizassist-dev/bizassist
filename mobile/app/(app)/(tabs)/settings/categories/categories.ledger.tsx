@@ -5,7 +5,6 @@
 // - Manage categories uses BACK chrome, but this root management surface exits deterministically.
 // - Header Back should not rely on history because duplicate ledger entries can self-pop first.
 
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Keyboard, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
@@ -75,10 +74,6 @@ export function CategoriesLedgerScreen({
 	const { busy } = useAppBusy();
 	const isBusy = !!busy?.isBusy;
 	const isTablet = layout === "tablet";
-
-	const tabBarHeight = useBottomTabBarHeight();
-	const TAB_KISS_GAP = 12;
-	const screenBottomPad = tabBarHeight + TAB_KISS_GAP;
 
 	const [qText, setQText] = useState("");
 	const q = qText.trim();
@@ -221,7 +216,6 @@ export function CategoriesLedgerScreen({
 						rightIconColor={item.isActive === false ? theme.colors.error : mutedIconColor}
 					/>
 				)}
-				ListFooterComponent={<View style={{ height: 12 }} />}
 			/>
 		) : null;
 
@@ -237,7 +231,7 @@ export function CategoriesLedgerScreen({
 				/>
 				<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
 					<SettingsScreenLayout
-						screenStyle={{ paddingTop: 0, paddingBottom: screenBottomPad }}
+						screenStyle={{ paddingTop: 0, paddingBottom: 0 }}
 						columnStyle={styles.contentColumn}
 						maxWidth={contentMaxWidth}
 					>
@@ -409,7 +403,7 @@ const styles = StyleSheet.create({
 	},
 	listContent: {
 		paddingTop: 4,
-		paddingBottom: 2,
+		paddingBottom: 8,
 		gap: 0,
 	},
 	list: {
