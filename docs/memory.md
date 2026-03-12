@@ -67,11 +67,14 @@ Quick index:
 - The avatar is treated as an app-level identity anchor, not a universal decoration for every header.
 - Reusable header APIs may support avatar placeholders, but screens must opt in deliberately.
 - Custom right-header action clusters may include both an action button and an avatar only when the screen is a destination/index surface and the title remains visually balanced.
+- Top-header avatar placeholders are locked at `50` points high.
+- Top-header action buttons in the same visual cluster as an avatar are locked at `50` points high and must mirror the avatar height.
 
 ### Enforcement
 
 - New header work must start from the rule: avatar on destination/index pages, no avatar on task/process flows.
 - Any exception requires an explicit product reason and must preserve title centering and header action clarity.
+- Future top-header action clusters must not introduce mixed heights between the avatar and adjacent header action buttons.
 
 ## 2026-03-12 — Inventory Realtime Image Sync Lock
 

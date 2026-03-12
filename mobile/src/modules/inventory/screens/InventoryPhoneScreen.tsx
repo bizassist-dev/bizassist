@@ -591,6 +591,7 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 
 								<View style={styles.heroRight}>
 									<BAIButton
+										size='md'
 										widthPreset='standard'
 										shape='pill'
 										onPress={onPressCreate}

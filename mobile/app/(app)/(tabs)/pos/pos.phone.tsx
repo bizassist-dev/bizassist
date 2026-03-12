@@ -831,7 +831,12 @@ export default function PosPhone() {
 										) : null}
 									</View>
 									<View style={styles.headerRight}>
-										<BAIButton shape='pill' onPress={() => setCart({})} disabled={disabled || cartLines.length === 0}>
+										<BAIButton
+											size='md'
+											shape='pill'
+											onPress={() => setCart({})}
+											disabled={disabled || cartLines.length === 0}
+										>
 											Clear
 										</BAIButton>
 										<View style={[styles.avatarPlaceholder, { borderColor, backgroundColor: surfaceAlt }]}>

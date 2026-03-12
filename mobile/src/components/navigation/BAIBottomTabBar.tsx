@@ -263,9 +263,9 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 
 	const tabForegroundColor = theme.dark ? "#FFFFFF" : "#000000";
 	const iconIdle = tabForegroundColor;
-	const iconActive = tabForegroundColor;
+	const iconActive = theme.colors.primary;
 	const labelIdle = tabForegroundColor;
-	const labelActive = tabForegroundColor;
+	const labelActive = theme.colors.primary;
 
 	const wrapperStyle = useMemo(
 		() => [styles.wrapper, { left: OUTER_HORIZONTAL_MARGIN, right: OUTER_HORIZONTAL_MARGIN, bottom }],

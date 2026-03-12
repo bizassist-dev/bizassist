@@ -939,8 +939,12 @@ Rules:
 4. Header-balance rule:
    - do not add an avatar if it crowds task-critical header actions or causes visible title-centering drift
    - action-plus-avatar clusters are allowed only when the screen remains visually balanced and the page is a destination/index surface
-5. Reusable header components may expose avatar-placeholder support, but callers must opt in deliberately.
-6. If a non-destination screen needs an avatar, that exception requires an explicit product reason rather than aesthetic preference alone.
+5. Header sizing rule:
+   - top-header avatar placeholders are locked at `50` points high
+   - top-header action buttons that sit inline with an avatar are also locked at `50` points high
+   - mixed button/avatar heights in the same top-header action cluster are not allowed
+6. Reusable header components may expose avatar-placeholder support, but callers must opt in deliberately.
+7. If a non-destination screen needs an avatar, that exception requires an explicit product reason rather than aesthetic preference alone.
 
 ### 1.11 POS Numeric Bottom Sheet Keyboard Governance (Locked)
 
