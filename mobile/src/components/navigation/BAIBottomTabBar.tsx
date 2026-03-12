@@ -37,7 +37,7 @@ const CANONICAL_SET = new Set<CanonicalTab>(TAB_ORDER);
 
 const ICONS: Record<CanonicalTab, TabIconSpec> = {
 	home: { family: "material", name: "clipboard-clock" },
-	inventory: { family: "material", name: "package" },
+	inventory: { family: "material", name: "package-variant" },
 	pos: { family: "material", name: "cash-register" },
 	settings: { family: "material", name: "cog" },
 };
@@ -49,7 +49,7 @@ const LABELS: Record<CanonicalTab, string> = {
 	settings: "Settings",
 };
 
-const DOCK_HEIGHT = 64;
+const DOCK_HEIGHT = 68;
 const DOCK_RADIUS = 999;
 const SCAN_BUTTON_SIZE = 60;
 
@@ -58,11 +58,13 @@ const DOCK_ITEM_GAP = 2;
 const CLUSTER_GAP = 8;
 const OUTER_HORIZONTAL_MARGIN = 10;
 const BOTTOM_SAFE_AREA_REDUCTION = 8;
+// Material glyphs do not render at equal optical size with equal numeric sizes,
+// so these are calibrated for visual parity in the dock.
 const TAB_ICON_SIZES: Record<CanonicalTab, number> = {
-	home: 22,
-	inventory: 21,
-	pos: 22,
-	settings: 22,
+	home: 23,
+	inventory: 25,
+	pos: 23,
+	settings: 23,
 };
 
 /**
