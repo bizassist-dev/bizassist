@@ -92,10 +92,22 @@ export default function InventoryStackLayout() {
 				name='units/custom-create'
 				options={{ title: "Create Custom Unit", headerBackTitle: "Custom Unit" }}
 			/>
-			<Stack.Screen name='products/pos-tile' options={{ headerShown: false, animation: "none" }} />
-			<Stack.Screen name='products/pos-tile-photo-library' options={{ headerShown: false, animation: "none" }} />
-			<Stack.Screen name='products/pos-tile-recents' options={{ headerShown: false, animation: "none" }} />
-			<Stack.Screen name='products/pos-tile-crop' options={{ headerShown: false, animation: "none" }} />
+			<Stack.Screen
+				name='products/pos-tile'
+				options={{ headerShown: false, animation: "slide_from_right", animationTypeForReplace: "pop" }}
+			/>
+			<Stack.Screen
+				name='products/pos-tile-photo-library'
+				options={{ headerShown: false, animation: "slide_from_right", animationTypeForReplace: "pop" }}
+			/>
+			<Stack.Screen
+				name='products/pos-tile-recents'
+				options={{ headerShown: false, animation: "slide_from_right", animationTypeForReplace: "pop" }}
+			/>
+			<Stack.Screen
+				name='products/pos-tile-crop'
+				options={{ headerShown: false, animation: "slide_from_right", animationTypeForReplace: "pop" }}
+			/>
 
 			{/* ✅ Item Details Overview — explicit back title */}
 			<Stack.Screen

@@ -349,18 +349,22 @@ export default function PosTilePhoneScreen({ routeScope = "inventory" }: { route
 							style={[styles.card, { borderColor: theme.colors.outlineVariant ?? theme.colors.outline }]}
 							padded
 						>
-							<BAITextInput
-								label='Tile Label'
-								value={tileLabel}
-								onChangeText={(t) => {
-									const cleaned = t.replace(/[^A-Za-z0-9 ]/g, "");
-									setTileLabel(cleaned);
-									patch({ posTileLabel: cleaned, posTileLabelTouched: true });
-								}}
-								maxLength={FIELD_LIMITS.posTileLabel}
-								placeholder={tileLabelPlaceholder}
-								disabled={isUiDisabled}
-							/>
+							<View style={styles.fieldBlock}>
+								<BAIText variant='caption' style={{ color: theme.colors.onSurfaceVariant ?? theme.colors.onSurface }}>
+									Tile Label
+								</BAIText>
+								<BAITextInput
+									value={tileLabel}
+									onChangeText={(t) => {
+										const cleaned = t.replace(/[^A-Za-z0-9 ]/g, "");
+										setTileLabel(cleaned);
+										patch({ posTileLabel: cleaned, posTileLabelTouched: true });
+									}}
+									maxLength={FIELD_LIMITS.posTileLabel}
+									placeholder={tileLabelPlaceholder}
+									disabled={isUiDisabled}
+								/>
+							</View>
 							{!isTileLabelValid && tileLabelErrorText ? (
 								<BAIText variant='caption' style={{ color: theme.colors.error }}>
 									{tileLabelErrorText}
@@ -486,6 +490,7 @@ const styles = StyleSheet.create({
 	root: { flex: 1 },
 	screen: { flex: 1, paddingHorizontal: 8, gap: 12 },
 	card: { borderWidth: 1, borderRadius: 24, padding: 12 },
+	fieldBlock: { gap: 6 },
 	actions: { gap: 8, marginBottom: 12 },
 	inlineActions: {
 		flexDirection: "row",
@@ -504,7 +509,7 @@ const styles = StyleSheet.create({
 	},
 	previewContainer: {
 		alignItems: "center",
-		marginTop: 8,
+		marginTop: 30,
 	},
 	previewWrap: {
 		borderWidth: 1,

@@ -10,4 +10,3 @@ export default function PosTileIndex() {
 	const { isTablet } = useResponsiveLayout();
 	return isTablet ? <PosTileTablet /> : <PosTilePhone />;
 }
-

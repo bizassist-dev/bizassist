@@ -10,4 +10,3 @@ export default function PosTilePhotoLibraryIndex() {
 	const { isTablet } = useResponsiveLayout();
 	return isTablet ? <PosTilePhotoLibraryTablet /> : <PosTilePhotoLibraryPhone />;
 }
-

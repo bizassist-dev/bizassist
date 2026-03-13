@@ -777,8 +777,8 @@ export default function MediaCropperScreen({
 						)}
 						<View style={styles.actions}>
 							<BAICTAPillButton
-								intent='neutral'
-								variant='outline'
+								intent='primary'
+								variant='solid'
 								onPress={onReset}
 								disabled={isNavLocked || !localUri}
 								style={styles.actionButton}

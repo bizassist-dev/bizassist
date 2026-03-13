@@ -35,6 +35,7 @@ import { patchPosCatalogImageCaches } from "@/modules/pos/pos.catalog.cache";
 import {
 	LOCAL_URI_KEY,
 	POS_TILE_CROP_ROUTE,
+	POS_TILE_PHOTO_LIBRARY_ROUTE,
 	RETURN_TO_KEY,
 	ROOT_RETURN_TO_KEY,
 } from "@/modules/inventory/posTile.contract";
@@ -122,7 +123,7 @@ export default function InventoryServicePhotoScreen({
 		setErrorMessage(null);
 
 		router.replace({
-			pathname: toScopedRoute("/(app)/(tabs)/inventory/products/pos-tile-photo-library.phone") as any,
+			pathname: toScopedRoute(POS_TILE_PHOTO_LIBRARY_ROUTE) as any,
 			params: {
 				mode: "itemPhoto",
 				productId,
