@@ -11,9 +11,9 @@ import { useTheme } from "react-native-paper";
 
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAITimeAgo } from "@/components/system/BAITimeAgo";
-import { BAICTAButton, BAICTAPillButton } from "@/components/ui/BAICTAButton";
+import { BAIHeader } from "@/components/ui/BAIHeader";
+import { BAICTAPillButton } from "@/components/ui/BAICTAButton";
 import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
-import { BAIInlineHeaderScaffold } from "@/components/ui/BAIInlineHeaderScaffold";
 import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
@@ -92,52 +92,17 @@ function DetailRow({ label, value, isLast = false }: { label: string; value: Rea
 				!isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
 			]}
 		>
-			<BAIText variant='caption' style={[styles.detailLabel, { color: labelColor }]}> 
+			<BAIText variant='caption' style={[styles.detailLabel, { color: labelColor }]}>
 				{label}
 			</BAIText>
 
 			{typeof value === "string" ? (
-				<BAIText variant='body' numberOfLines={2} style={[styles.detailValue, { color: valueColor }]}> 
+				<BAIText variant='body' numberOfLines={2} style={[styles.detailValue, { color: valueColor }]}>
 					{value}
 				</BAIText>
 			) : (
 				<View style={styles.detailValueRow}>{value}</View>
 			)}
-		</View>
-	);
-}
-
-function MetaRow({
-	label,
-	value,
-	divider,
-	dividerColor,
-}: {
-	label: string;
-	value: React.ReactNode;
-	divider?: boolean;
-	dividerColor?: string;
-}) {
-	return (
-		<View
-			style={[
-				styles.metaRow,
-				divider ? [styles.metaRowDivider, dividerColor ? { borderBottomColor: dividerColor } : null] : null,
-			]}
-		>
-			<BAIText variant='caption' muted style={styles.metaLabel}>
-				{label}
-			</BAIText>
-
-			<View style={styles.metaValueCol}>
-				{typeof value === "string" ? (
-					<BAIText variant='body' numberOfLines={1} ellipsizeMode='tail' style={styles.metaValueText}>
-						{value}
-					</BAIText>
-				) : (
-					value
-				)}
-			</View>
 		</View>
 	);
 }
@@ -176,11 +141,26 @@ export default function InventoryServiceDetailScreen({
 
 	const product = detailQuery.data ?? null;
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const secondaryTextColor = theme.colors.onSurfaceVariant ?? theme.colors.onSurface;
+	const imageActionOverlayButtonStyle = useMemo(
+		() => ({
+			backgroundColor: theme.dark ? "rgba(17, 17, 17, 0.58)" : "rgba(255, 255, 255, 0.74)",
+			borderColor: theme.dark ? borderColor : "rgba(0, 0, 0, 0.2)",
+		}),
+		[borderColor, theme.dark],
+	);
 	const isArchived = product?.isActive === false;
 
 	const onBackToServices = useCallback(() => {
 		if (!canNavigate) return;
-		router.replace(toScopedRoute("/(app)/(tabs)/inventory?type=SERVICES") as any);
+		if (router.canGoBack?.()) {
+			router.back();
+			return;
+		}
+		router.replace({
+			pathname: toScopedRoute("/(app)/(tabs)/inventory") as any,
+			params: { type: "SERVICES" } as any,
+		});
 	}, [canNavigate, router, toScopedRoute]);
 
 	const title = (product as any)?.name?.trim() ? (product as any).name : "Service";
@@ -277,17 +257,10 @@ export default function InventoryServiceDetailScreen({
 	const shouldShowTileTextOverlay = hasVisualTile && (hasTileLabel || hasTileServiceName);
 	const tileLabelColor = "#FFFFFF";
 
-	const [isImageLoading, setIsImageLoading] = useState(false);
 	const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
 	useEffect(() => {
-		if (imageUri) {
-			setIsImageLoading(true);
-			setImageLoadFailed(false);
-		} else {
-			setIsImageLoading(false);
-			setImageLoadFailed(false);
-		}
+		setImageLoadFailed(false);
 	}, [imageUri]);
 
 	const onEditService = useCallback(() => {
@@ -356,6 +329,21 @@ export default function InventoryServiceDetailScreen({
 		});
 	}, [busy.isBusy, product, productId, queryClient, showError, showSuccess, withBusy]);
 
+	const heroMetaLine = useMemo(() => {
+		const tokens = [durationBreakdown.durationValue, priceText].filter(isMeaningfulDetailText);
+		return tokens.join(" • ");
+	}, [durationBreakdown.durationValue, priceText]);
+
+	const heroSummaryCards = useMemo(
+		() => [
+			{ label: "Type", value: typeLabel },
+			{ label: "Duration", value: durationBreakdown.durationValue },
+			{ label: "Price", value: priceText },
+			{ label: "Processing", value: durationBreakdown.processingEnabled ? "Enabled" : "Disabled" },
+		],
+		[durationBreakdown.durationValue, durationBreakdown.processingEnabled, priceText, typeLabel],
+	);
+
 	const details = useMemo(() => {
 		if (!product) return [];
 		const p: any = product;
@@ -363,6 +351,19 @@ export default function InventoryServiceDetailScreen({
 
 		if (isMeaningfulDetailText(p.name)) rows.push({ label: "Name", value: p.name.trim() });
 		if (typeof p.isActive === "boolean") rows.push({ label: "Status", value: p.isActive ? "Active" : "Archived" });
+		if (categoryName !== "None") {
+			rows.push({
+				label: "Category",
+				value: (
+					<View style={styles.metaInline}>
+						<View style={[styles.categoryDot, categoryDotStyle]} />
+						<BAIText variant='body' numberOfLines={1} ellipsizeMode='tail' style={styles.detailValue}>
+							{categoryName}
+						</BAIText>
+					</View>
+				),
+			});
+		}
 		if (isMeaningfulDetailText(p.description)) rows.push({ label: "Description", value: p.description.trim() });
 
 		const unitLabel = formatUnitLabel(p);
@@ -433,27 +434,7 @@ export default function InventoryServiceDetailScreen({
 		}
 
 		return rows;
-	}, [durationBreakdown, product]);
-
-	const metaRows = useMemo(
-		() => [
-			{ label: "Type", value: typeLabel },
-			{ label: "Duration", value: durationBreakdown.durationValue },
-			{
-				label: "Category",
-				value: (
-					<View style={styles.metaInline}>
-						{categoryName !== "None" ? <View style={[styles.categoryDot, categoryDotStyle]} /> : null}
-						<BAIText variant='body' numberOfLines={1} ellipsizeMode='tail' style={styles.metaValueText}>
-							{categoryName}
-						</BAIText>
-					</View>
-				),
-			},
-			{ label: "Price", value: priceText },
-		],
-		[categoryDotStyle, categoryName, durationBreakdown.durationValue, priceText, typeLabel],
-	);
+	}, [categoryDotStyle, categoryName, durationBreakdown, product]);
 
 	const isLoading = detailQuery.isLoading;
 	const isError = detailQuery.isError;
@@ -464,46 +445,35 @@ export default function InventoryServiceDetailScreen({
 					"Failed to load service.",
 			)
 		: "";
+	const showDetails = details.length > 0;
 
 	return (
-		<BAIInlineHeaderScaffold
-			title='Service Details Overview'
-			variant='back'
-			onLeftPress={onBackToServices}
-			disabled={!canNavigate}
-		>
-			<BAIScreen
-				padded={false}
-				tabbed
-				safeTop={false}
-				safeBottom={false}
-				style={styles.root}
-				contentContainerStyle={[styles.screen, { paddingBottom: tabBarHeight + 12 }]}
-			>
-				<BAISurface style={[styles.card, { borderColor }]} padded={false}>
-					{!isLoading && !isError && product ? (
-						<View style={[styles.cardHeader, { borderBottomColor: borderColor }]}> 
-							<BAIText variant='title'>Service Details</BAIText>
-						</View>
-					) : null}
+		<BAIScreen padded={false} tabbed safeTop={false} safeBottom={false} safeAreaGradientBottom style={styles.root}>
+			<BAIHeader title='Service Details' variant='back' onLeftPress={onBackToServices} disabled={!canNavigate} />
 
-					<ScrollView
-						style={styles.cardScroll}
-						contentContainerStyle={styles.cardScrollContent}
-						showsVerticalScrollIndicator={false}
-						keyboardShouldPersistTaps='handled'
-					>
-						{isLoading ? (
+			<ScrollView
+				style={styles.screenScroll}
+				contentContainerStyle={[styles.screenContent, { paddingBottom: tabBarHeight + 12 }]}
+				showsVerticalScrollIndicator={false}
+				keyboardShouldPersistTaps='handled'
+			>
+				{isLoading ? (
+					<View style={styles.contentColumn}>
+						<BAISurface style={styles.stateSurface}>
 							<View style={styles.center}>
 								<BAIActivityIndicator />
 							</View>
-						) : isError || !product ? (
+						</BAISurface>
+					</View>
+				) : isError || !product ? (
+					<View style={styles.contentColumn}>
+						<BAISurface style={styles.stateSurface}>
 							<View style={styles.center}>
 								<BAIText variant='title' numberOfLines={1} ellipsizeMode='tail' style={styles.title}>
 									{title}
 								</BAIText>
 
-								<BAIText variant='body' muted style={{ marginTop: 8, textAlign: "center" }}>
+								<BAIText variant='body' muted style={styles.errorText}>
 									{errorMessage || "Could not load service."}
 								</BAIText>
 
@@ -513,166 +483,201 @@ export default function InventoryServiceDetailScreen({
 									</BAIRetryButton>
 								</View>
 							</View>
-						) : (
-							<>
-								<View style={styles.imageSection}>
-									<View style={styles.imageInlineRow}>
-										<View
-											style={[
-												styles.imagePreview,
-												{
-													borderColor,
-													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-												},
-											]}
-										>
-											{hasImage ? (
-												<View style={styles.imageFill}>
-													<Image
-														source={{ uri: imageUri }}
-														style={styles.imagePreviewImage}
-														resizeMode='cover'
-														onLoadStart={() => {
-															setIsImageLoading(true);
-															setImageLoadFailed(false);
-														}}
-														onLoadEnd={() => setIsImageLoading(false)}
-														onError={() => {
-															setIsImageLoading(false);
-															setImageLoadFailed(true);
-														}}
-													/>
+						</BAISurface>
+					</View>
+				) : (
+					<View style={styles.contentColumn}>
+						<BAISurface style={styles.heroSurface} padded={false} radius={28} elevation={1}>
+							<View style={styles.heroSurfaceInner}>
+								<View style={styles.heroMediaWrap}>
+									<View
+										style={[
+											styles.imagePreview,
+											{
+												borderColor,
+												backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+											},
+										]}
+									>
+										{hasImage ? (
+											<View style={styles.imageFill}>
+												<Image
+													source={{ uri: imageUri }}
+													style={styles.imagePreviewImage}
+													resizeMode='cover'
+													onLoad={() => setImageLoadFailed(false)}
+													onError={() => setImageLoadFailed(true)}
+												/>
 
-													{isImageLoading ? (
-														<View style={styles.imageLoadingOverlay} pointerEvents='none'>
-															<BAIActivityIndicator />
-														</View>
-													) : null}
+												{imageLoadFailed ? (
+													<View style={styles.imageLoadingOverlay} pointerEvents='none'>
+														<FontAwesome6
+															name='image'
+															size={48}
+															color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+														/>
+														<View style={styles.failedPhotoSpacer} />
+														<BAIText variant='caption' muted>
+															Failed to load photo
+														</BAIText>
+													</View>
+												) : null}
+											</View>
+										) : hasColor ? (
+											<View style={[styles.imagePreviewImage, { backgroundColor: tileColor }]} />
+										) : shouldShowEmpty ? (
+											<View style={styles.imagePreviewEmpty}>
+												<FontAwesome6
+													name='image'
+													size={64}
+													color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+												/>
+												<BAIText variant='caption' muted>
+													No Photo
+												</BAIText>
+											</View>
+										) : null}
 
-													{imageLoadFailed ? (
-														<View style={styles.imageLoadingOverlay} pointerEvents='none'>
-															<FontAwesome6
-																name='image'
-																size={48}
-																color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-															/>
-															<View style={{ height: 6 }} />
-															<BAIText variant='caption' muted>
-																Failed to load photo
-															</BAIText>
-														</View>
-													) : null}
-												</View>
-											) : hasColor ? (
-												<View style={[styles.imagePreviewImage, { backgroundColor: tileColor }]} />
-											) : shouldShowEmpty ? (
-												<View style={styles.imagePreviewEmpty}>
-													<FontAwesome6
-														name='image'
-														size={64}
-														color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-													/>
-													<BAIText variant='caption' muted>
-														No Photo
-													</BAIText>
-												</View>
-											) : null}
-
-											{shouldShowTileTextOverlay ? <PosTileTextOverlay label={tileLabel} name={tileServiceName} textColor={tileLabelColor} /> : null}
-										</View>
+										{shouldShowTileTextOverlay ? (
+											<PosTileTextOverlay label={tileLabel} name={tileServiceName} textColor={tileLabelColor} />
+										) : null}
 
 										{!isArchived ? (
-											<View style={styles.imageActionColumn}>
+											<View style={styles.imageActionOverlay}>
 												<BAIIconButton
 													variant='outlined'
 													size='md'
 													icon='camera'
-													iconSize={34}
+													iconSize={30}
 													accessibilityLabel='Edit image'
 													onPress={onImagePress}
 													disabled={!canNavigate || isLoading}
-													style={styles.imageEditButtonOutside}
+													style={[styles.imageActionButtonOverlay, imageActionOverlayButtonStyle]}
 												/>
 											</View>
 										) : null}
 									</View>
 								</View>
 
-								<View style={styles.header}>
-									<View style={styles.headerLeft}>
-										<BAIText variant='title' numberOfLines={1} ellipsizeMode='tail' style={styles.title}>
-											{title}
-										</BAIText>
-										<BAIText variant='caption' muted numberOfLines={1} style={styles.headerSub}>
-											Status:{" "}
-											{typeof (product as any)?.isActive === "boolean"
-												? (product as any).isActive
-													? "Active"
-													: "Archived"
-												: "—"}
-										</BAIText>
+								<View style={styles.heroCopyWrap}>
+									<View style={styles.heroBadgeRow}>
+										<View
+											style={[
+												styles.heroBadge,
+												{
+													borderColor,
+													backgroundColor: isArchived
+														? (theme.colors.errorContainer ?? theme.colors.surfaceVariant)
+														: theme.colors.surface,
+												},
+											]}
+										>
+											<BAIText
+												variant='caption'
+												style={{
+													color: isArchived ? (theme.colors.error ?? theme.colors.onSurface) : theme.colors.onSurface,
+												}}
+											>
+												{isArchived ? "Archived" : "Active"}
+											</BAIText>
+										</View>
+
+										{categoryName !== "None" ? (
+											<View style={[styles.heroCategoryBadge, { borderColor }]}>
+												<View style={[styles.categoryDot, categoryDotStyle]} />
+												<BAIText variant='caption' numberOfLines={1} style={styles.heroCategoryText}>
+													{categoryName}
+												</BAIText>
+											</View>
+										) : null}
 									</View>
+
+									<BAIText variant='title' numberOfLines={2} ellipsizeMode='tail' style={styles.heroTitle}>
+										{title}
+									</BAIText>
+
+									{heroMetaLine ? (
+										<BAIText
+											variant='body'
+											numberOfLines={2}
+											ellipsizeMode='tail'
+											style={[styles.heroMetaLine, { color: secondaryTextColor }]}
+										>
+											{heroMetaLine}
+										</BAIText>
+									) : null}
 								</View>
 
-								<View
-									style={[
-										styles.metaPanel,
-										{ borderColor, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
-									]}
-								>
-									{metaRows.map((row, index) => (
-										<MetaRow
-											key={`${row.label}-${index}`}
-											label={row.label}
-											value={row.value}
-											divider={index < metaRows.length - 1}
-											dividerColor={borderColor}
-										/>
+								<View style={styles.heroStatsGrid}>
+									{heroSummaryCards.map((card) => (
+										<View
+											key={card.label}
+											style={[
+												styles.heroStatCard,
+												{
+													borderColor,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+											]}
+										>
+											<BAIText variant='caption' style={{ color: secondaryTextColor }}>
+												{card.label}
+											</BAIText>
+											<BAIText variant='subtitle' numberOfLines={2} ellipsizeMode='tail' style={styles.heroStatValue}>
+												{card.value}
+											</BAIText>
+										</View>
 									))}
 								</View>
+							</View>
+						</BAISurface>
 
-								{!isArchived ? (
-									<View style={[styles.itemFooterActions, styles.topActionsContainer]}>
-										<BAICTAButton
-											variant='outline'
+						{!isArchived ? (
+							<BAISurface style={styles.actionSurface} padded={false} radius={24} elevation={1}>
+								<View style={styles.actionSurfaceInner}>
+									<View style={styles.itemFooterActions}>
+										<BAICTAPillButton
+											variant='solid'
 											intent='primary'
 											onPress={onEditService}
 											disabled={!productId || !canNavigate}
 											style={styles.footerActionButton}
 										>
 											Edit Service
-										</BAICTAButton>
+										</BAICTAPillButton>
 									</View>
-								) : null}
+								</View>
+							</BAISurface>
+						) : null}
 
-								{details.length > 0 ? (
-									<View style={styles.detailsSectionContainerPadding}>
-										<View
-											style={[
-												styles.detailsSecondaryContainer,
-												{ borderColor, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
-											]}
-										>
-											<View style={[styles.sectionHeader, { borderBottomColor: borderColor }]}> 
-												<BAIText variant='subtitle'>Details</BAIText>
-											</View>
-											<View style={styles.sectionBody}>
-												<View style={styles.detailsGridTight}>
-													{details.map((r, index) => (
-														<DetailRow
-															key={`${r.label}:${String(index)}`}
-															label={r.label}
-															value={r.value}
-															isLast={index === details.length - 1}
-														/>
-													))}
-												</View>
-											</View>
-										</View>
+						{showDetails ? (
+							<BAISurface style={styles.sectionSurface} padded={false} radius={24} elevation={1}>
+								<View style={[styles.sectionHeader, { borderBottomColor: borderColor }]}>
+									<View style={styles.sectionHeaderText}>
+										<BAIText variant='subtitle'>Details</BAIText>
+										<BAIText variant='caption' style={{ color: secondaryTextColor }}>
+											Service profile and duration information
+										</BAIText>
 									</View>
-								) : null}
+								</View>
+								<View style={styles.sectionBody}>
+									<View style={styles.detailsGridTight}>
+										{details.map((r, index) => (
+											<DetailRow
+												key={`${r.label}:${String(index)}`}
+												label={r.label}
+												value={r.value}
+												isLast={index === details.length - 1}
+											/>
+										))}
+									</View>
+								</View>
+							</BAISurface>
+						) : null}
 
-								<View style={[styles.itemFooterActions, styles.bottomActionsContainer]}>
+						<BAISurface style={styles.actionSurface} padded={false} radius={24} elevation={1}>
+							<View style={styles.actionSurfaceInner}>
+								<View style={styles.itemFooterActions}>
 									{isArchived ? (
 										<>
 											<BAICTAPillButton
@@ -717,98 +722,126 @@ export default function InventoryServiceDetailScreen({
 										</>
 									)}
 								</View>
-							</>
-						)}
-					</ScrollView>
-				</BAISurface>
-				<BAIConfirmArchiveModal
-					visible={isArchiveConfirmOpen}
-					entityLabel='service'
-					entityName={product?.name}
-					description='Archived services stay in historical records and are removed from active lists and POS.'
-					onDismiss={closeArchiveConfirm}
-					onConfirm={onConfirmArchive}
-					disabled={busy.isBusy}
-				/>
-				<BAIConfirmRestoreModal
-					visible={isRestoreConfirmOpen}
-					entityLabel='service'
-					entityName={product?.name}
-					description='Restored services return to active lists and can be sold in POS again.'
-					onDismiss={closeRestoreConfirm}
-					onConfirm={onConfirmRestore}
-					disabled={busy.isBusy}
-				/>
-			</BAIScreen>
-		</BAIInlineHeaderScaffold>
+							</View>
+						</BAISurface>
+					</View>
+				)}
+			</ScrollView>
+			<BAIConfirmArchiveModal
+				visible={isArchiveConfirmOpen}
+				entityLabel='service'
+				entityName={product?.name}
+				description='Archived services stay in historical records and are removed from active lists and POS.'
+				onDismiss={closeArchiveConfirm}
+				onConfirm={onConfirmArchive}
+				disabled={busy.isBusy}
+			/>
+			<BAIConfirmRestoreModal
+				visible={isRestoreConfirmOpen}
+				entityLabel='service'
+				entityName={product?.name}
+				description='Restored services return to active lists and can be sold in POS again.'
+				onDismiss={closeRestoreConfirm}
+				onConfirm={onConfirmRestore}
+				disabled={busy.isBusy}
+			/>
+		</BAIScreen>
 	);
 }
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12, paddingBottom: 12, paddingTop: 0 },
-	card: {
-		flex: 1,
-		minHeight: 0,
-		borderWidth: 1,
-		borderRadius: 24,
-		gap: 6,
-		overflow: "hidden",
-		paddingHorizontal: 0,
-		paddingTop: 12,
-		paddingBottom: 12,
-	},
-	cardScroll: { flex: 1 },
-	cardScrollContent: { paddingBottom: 4 },
-	cardHeader: {
-		paddingHorizontal: 14,
-		paddingBottom: 10,
-		marginBottom: 0,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-	},
-	center: { padding: 16, alignItems: "center", justifyContent: "center" },
+	screenScroll: { flex: 1 },
+	screenContent: { paddingHorizontal: 14, paddingTop: 0, alignItems: "center" },
+	contentColumn: { width: "100%", maxWidth: 920 },
+	center: { padding: 24, alignItems: "center", justifyContent: "center", minHeight: 180 },
+	stateSurface: { marginBottom: 0 },
 
-	imageSection: {
-		alignItems: "center",
-		gap: 10,
-		marginBottom: 16,
+	heroSurface: {
+		marginBottom: 14,
 	},
-	imageInlineRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
+	heroSurfaceInner: {
+		padding: 16,
 		gap: 16,
 	},
-	imageActionColumn: {
+	heroMediaWrap: {
+		alignSelf: "center",
+		width: 240,
+	},
+	heroCopyWrap: {
+		width: "100%",
+		gap: 10,
+		paddingTop: 2,
+		alignItems: "flex-start",
+	},
+	heroBadgeRow: {
+		flexDirection: "row",
 		alignItems: "center",
-		gap: 20,
+		flexWrap: "wrap",
+		gap: 8,
 	},
-	imageEditButtonOutside: {
-		width: 60,
-		height: 60,
-		borderRadius: 30,
+	heroBadge: {
+		paddingHorizontal: 12,
+		paddingVertical: 7,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
 	},
+	heroCategoryBadge: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+		maxWidth: "100%",
+		paddingHorizontal: 12,
+		paddingVertical: 7,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+	},
+	heroCategoryText: {
+		flexShrink: 1,
+	},
+	heroTitle: {
+		fontWeight: "700",
+	},
+	heroMetaLine: {
+		lineHeight: 20,
+	},
+	heroStatsGrid: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 10,
+	},
+	heroStatCard: {
+		width: "48.5%",
+		minHeight: 86,
+		borderRadius: 18,
+		borderWidth: StyleSheet.hairlineWidth,
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		justifyContent: "space-between",
+	},
+	heroStatValue: {
+		fontWeight: "700",
+	},
+
 	itemFooterActions: {
-		marginTop: 16,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
 	},
-	topActionsContainer: {
-		paddingHorizontal: 12,
-		paddingBottom: 12,
+	actionSurface: {
+		marginBottom: 14,
 	},
-	bottomActionsContainer: {
-		paddingHorizontal: 12,
-		paddingVertical: 10,
+	actionSurfaceInner: {
+		padding: 14,
+		gap: 10,
 	},
 	footerActionButton: {
 		flex: 1,
 	},
 	imagePreview: {
-		width: 180,
+		width: "100%",
 		aspectRatio: 1,
-		borderRadius: 18,
+		borderRadius: 24,
 		borderWidth: 1,
 		overflow: "hidden",
 		position: "relative",
@@ -830,110 +863,43 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
+	imageActionOverlay: {
+		position: "absolute",
+		bottom: 12,
+		right: 12,
+		alignItems: "flex-end",
+		zIndex: 2,
+	},
+	imageActionButtonOverlay: {
+		width: 46,
+		height: 46,
+		borderRadius: 23,
+	},
 	imagePreviewEmpty: {
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
+		gap: 8,
 	},
-	tileLabelWrap: {
-		position: "absolute",
-		left: 2,
-		right: 2,
-		bottom: 2,
-		borderRadius: 16,
-		overflow: "hidden",
-		minHeight: 80,
-	},
-	tileLabelOverlay: {
-		...StyleSheet.absoluteFillObject,
-	},
-	tileLabelContent: {
-		paddingHorizontal: 10,
-		paddingTop: 6,
-		paddingBottom: 6,
-		justifyContent: "flex-start",
-		gap: 2,
-	},
-	tileNameOnlyContent: {
-		position: "absolute",
-		left: 0,
-		right: 0,
-		bottom: 0,
-		minHeight: 32,
-		paddingHorizontal: 10,
-		paddingVertical: 6,
-		justifyContent: "center",
-	},
-	tileLabelRow: {
-		minHeight: 36,
-		justifyContent: "flex-end",
-	},
-	tileNameRow: {
-		minHeight: 20,
-		justifyContent: "flex-start",
-	},
-	tileNamePill: {
-		alignSelf: "stretch",
-		width: "100%",
-		borderRadius: 999,
-		paddingHorizontal: 10,
-		paddingVertical: 4,
-	},
-	tileLabelText: {
-		fontWeight: "700",
-		fontSize: 30,
-	},
-	tileItemName: {
-		marginTop: 0,
-		fontSize: 18,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 12,
-		paddingHorizontal: 12,
-	},
-	headerLeft: { flex: 1, minWidth: 0, gap: 6 },
-	headerSub: { opacity: 0.9 },
 
-	metaPanel: {
-		borderWidth: StyleSheet.hairlineWidth,
-		borderRadius: 16,
-		overflow: "hidden",
-		marginTop: 12,
-		marginHorizontal: 12,
-	},
-	metaRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
-	metaRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
-	metaLabel: { width: 88 },
-	metaValueCol: { flex: 1, minWidth: 0 },
-	metaValueText: { flexShrink: 1 },
 	metaInline: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 },
-
 	categoryDot: { width: 12, height: 12, borderRadius: 9, borderWidth: 1 },
 	title: { flexShrink: 1 },
-
+	errorText: { marginTop: 8, textAlign: "center" },
 	actions: { marginTop: 12, flexDirection: "row", gap: 10 },
 
+	sectionSurface: {
+		marginBottom: 14,
+	},
 	sectionHeader: {
-		paddingHorizontal: 12,
-		paddingVertical: 12,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
 		borderBottomWidth: StyleSheet.hairlineWidth,
 	},
-	detailsSectionContainerPadding: {
-		paddingHorizontal: 12,
-		paddingVertical: 10,
+	sectionHeaderText: {
+		gap: 4,
 	},
-	detailsSecondaryContainer: {
-		borderWidth: StyleSheet.hairlineWidth,
-		borderRadius: 16,
-		overflow: "hidden",
-	},
-	sectionBody: { padding: 12 },
+	sectionBody: { padding: 16 },
 	detailsGridTight: { gap: 0 },
 
 	detailRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 },
@@ -945,4 +911,5 @@ const styles = StyleSheet.create({
 	timestampRow: { flexDirection: "row", alignItems: "center", flexWrap: "nowrap", gap: 4, flex: 1 },
 	timestampValue: { flex: 0, flexShrink: 1 },
 	timestampAgo: { flexShrink: 0 },
+	failedPhotoSpacer: { height: 6 },
 });

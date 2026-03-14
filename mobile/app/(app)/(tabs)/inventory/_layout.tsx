@@ -113,18 +113,37 @@ export default function InventoryStackLayout() {
 			<Stack.Screen
 				name='products/[id]/index'
 				options={{
-					title: "Item Details Overview",
-					headerBackTitle: "Inventory",
+					headerShown: false,
+					animation: "slide_from_right",
+					animationTypeForReplace: "pop",
 				}}
 			/>
-			<Stack.Screen name='products/[id]/edit' options={{ title: "Edit Item" }} />
+			<Stack.Screen
+				name='services/[id]/index'
+				options={{
+					headerShown: false,
+					animation: "slide_from_right",
+					animationTypeForReplace: "pop",
+				}}
+			/>
+			<Stack.Screen
+				name='products/[id]/edit'
+				options={{
+					headerShown: false,
+					animation: "slide_from_right",
+					animationTypeForReplace: "pop",
+				}}
+			/>
 
 			<Stack.Screen
 				name='products/[id]/activity/index'
-				options={{ title: "Item Activity", headerBackTitle: "Item Details" }}
+				options={{ headerShown: false, animation: "slide_from_right", animationTypeForReplace: "pop" }}
 			/>
 			<Stack.Screen name='products/[id]/adjust' options={{ title: "Adjust Stocks" }} />
-			<Stack.Screen name='products/[id]/activity/[movementId]' options={{ title: "Activity Details" }} />
+			<Stack.Screen
+				name='products/[id]/activity/[movementId]'
+				options={{ headerShown: false, animation: "slide_from_right", animationTypeForReplace: "pop" }}
+			/>
 		</Stack>
 	);
 }

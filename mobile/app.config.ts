@@ -30,9 +30,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
 	},
 
 	ios: {
-		bundleIdentifier: "com.anonymous.mobile",
+		bundleIdentifier: "com.gerardogaden.bizassist",
 		supportsTablet: true,
 		infoPlist: {
+			NSLocalNetworkUsageDescription:
+				"Allow BizAssist to connect to your local development server while running the app in development.",
 			UIViewControllerBasedStatusBarAppearance: false,
 			UISupportedInterfaceOrientations: ["UIInterfaceOrientationPortrait"],
 			"UISupportedInterfaceOrientations~ipad": [
@@ -45,7 +47,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
 	},
 
 	android: {
-		package: "com.anonymous.mobile",
+		package: "com.gerardogaden.bizassist",
 		// NOTE: usesCleartextTraffic is valid in app.json/app.config, but TS types sometimes lag.
 		// If TS complains, either cast android as any (shown below) or update @expo/config-types.
 		...({

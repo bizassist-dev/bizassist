@@ -72,7 +72,7 @@ export function BAIGroupTabs<T extends string>({
 					toValue: nextTranslateX,
 					duration: TAB_ANIMATION_DURATION_MS,
 					easing: Easing.out(Easing.cubic),
-					useNativeDriver: true,
+					useNativeDriver: false,
 				}),
 				Animated.timing(activeIndexProgress, {
 					toValue: nextIndex,
@@ -192,7 +192,7 @@ export function BAIGroupTabs<T extends string>({
 							<Animated.Text
 								numberOfLines={1}
 								adjustsFontSizeToFit
-								minimumFontScale={0.85}
+								minimumFontScale={0.75}
 								style={[styles.label, { color: animatedTextColor, opacity: animatedTextOpacity }]}
 							>
 								{displayLabel}
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		minHeight: 36,
 		paddingVertical: 8,
-		paddingHorizontal: 6,
+		paddingHorizontal: 4,
 		borderRadius: 999,
 		justifyContent: "center",
 		zIndex: 1,

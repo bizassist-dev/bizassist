@@ -18,6 +18,8 @@ import { useResponsiveLayout } from "@/lib/layout/useResponsiveLayout";
 import { formatCompactNumber } from "@/lib/locale/businessLocale";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { modifiersApi } from "@/modules/modifiers/modifiers.api";
+import { getModifierCardBackgroundColor } from "@/modules/modifiers/modifierColors";
+import { ModifierLedgerFiltersCard } from "@/modules/modifiers/components/ModifierLedgerFiltersCard";
 import type { ModifierGroup } from "@/modules/modifiers/modifiers.types";
 import { FIELD_LIMITS } from "@/shared/fieldLimits";
 import { sanitizeSearchInput } from "@/shared/validation/sanitize";
@@ -68,6 +70,7 @@ function Row({
 	const rowNameColor = item.isArchived
 		? (theme.colors.onSurfaceVariant ?? theme.colors.onSurface)
 		: theme.colors.onSurface;
+	const cardBackgroundColor = getModifierCardBackgroundColor(theme);
 
 	return (
 		<BAISurface
@@ -75,7 +78,7 @@ function Row({
 				styles.row,
 				{
 					borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
-					backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+					backgroundColor: cardBackgroundColor,
 				},
 			]}
 			padded
@@ -214,6 +217,7 @@ export function ModifiersLedgerScreen() {
 	}, [filter, router]);
 
 	const hasSearch = search.trim().length > 0;
+	const modifierCardBackgroundColor = getModifierCardBackgroundColor(theme);
 
 	return (
 		<>
@@ -246,15 +250,11 @@ export function ModifiersLedgerScreen() {
 							<BAISurface style={[styles.card, styles.cardTransparent]} padded={false} bordered={false}>
 								<BAIGovernedScrollableLayout
 									top={
-										<View
-											style={[
-												styles.controlsContainer,
-												{
-													borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
-												},
-											]}
-										>
-											<View style={styles.controls}>
+										<ModifierLedgerFiltersCard
+											borderColor={theme.colors.outlineVariant ?? theme.colors.outline}
+											backgroundColor={modifierCardBackgroundColor}
+											style={styles.filtersCard}
+											search={
 												<BAISearchWithScanButton
 													value={search}
 													onChangeText={(value) => {
@@ -269,18 +269,17 @@ export function ModifiersLedgerScreen() {
 													onSubmit={() => setSearch((value) => value.trim())}
 													scanEnabled
 													searchAccessibilityLabel='Search modifiers'
-													style={styles.searchControl}
 												/>
-												<View style={styles.groupTabsWrap}>
-													<BAIGroupTabs
-														tabs={modifierTabs}
-														value={filter}
-														onChange={setFilter}
-														countFormatter={(count) => formatCompactNumber(count, countryCode)}
-													/>
-												</View>
-											</View>
-										</View>
+											}
+											tabs={
+												<BAIGroupTabs
+													tabs={modifierTabs}
+													value={filter}
+													onChange={setFilter}
+													countFormatter={(count) => formatCompactNumber(count, countryCode)}
+												/>
+											}
+										/>
 									}
 									scrollArea={
 										<View style={styles.listSection}>
@@ -355,19 +354,7 @@ const styles = StyleSheet.create({
 	tablet: { maxWidth: 720 },
 	card: { flex: 1, minHeight: 0, borderRadius: 18, gap: 6 },
 	cardTransparent: { backgroundColor: "transparent" },
-	controlsContainer: {
-		borderWidth: 1,
-		borderRadius: 14,
-		paddingHorizontal: 8,
-		paddingTop: 6,
-		paddingBottom: 10,
-		marginBottom: 10,
-	},
-	controls: { gap: 2, paddingBottom: 0 },
-	searchControl: { paddingTop: 4 },
-	groupTabsWrap: {
-		paddingTop: 2,
-	},
+	filtersCard: { marginBottom: 10 },
 	headerActionPressed: {
 		opacity: 0.78,
 	},

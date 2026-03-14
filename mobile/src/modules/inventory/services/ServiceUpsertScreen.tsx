@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Image, Keyboard, ScrollView, StyleSheet, TouchableWithoutFeedback, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FontAwesome6 } from "@expo/vector-icons";
 
@@ -25,6 +24,7 @@ import { BAITextInput } from "@/components/ui/BAITextInput";
 import { BAITextarea } from "@/components/ui/BAITextarea";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
+import { getStandardScrollBottomPadding } from "@/lib/layout/scrollGovernance";
 import { useAppToast } from "@/providers/AppToastProvider";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { catalogKeys } from "@/modules/catalog/catalog.queries";
@@ -309,7 +309,6 @@ export function ServiceUpsertScreen(props: {
 		if (Array.isArray(fromRoute)) return String(fromRoute[0] ?? "").trim();
 		return String(fromRoute ?? "").trim();
 	}, [params, serviceId]);
-	const tabBarHeight = useBottomTabBarHeight();
 	const { currencyCode } = useActiveBusinessMeta();
 	const appBusy = useAppBusy();
 	const { showSuccess } = useAppToast();
@@ -348,6 +347,7 @@ export function ServiceUpsertScreen(props: {
 	const [initializedEdit, setInitializedEdit] = useState(mode === "create");
 	const [openDurationAccordion, setOpenDurationAccordion] = useState<DurationAccordionKey | null>(null);
 	const [confirmExitOpen, setConfirmExitOpen] = useState(false);
+	const [isSystemKeyboardOpen, setIsSystemKeyboardOpen] = useState(false);
 	const missingIdLoggedRef = useRef(false);
 	const loadErrorLoggedRef = useRef<string | null>(null);
 	const serviceUnitAutoEnableRef = useRef(false);
@@ -363,6 +363,16 @@ export function ServiceUpsertScreen(props: {
 			setIsNavLocked(false);
 		}, ms);
 		return true;
+	}, []);
+
+	useEffect(() => {
+		const showSub = Keyboard.addListener("keyboardDidShow", () => setIsSystemKeyboardOpen(true));
+		const hideSub = Keyboard.addListener("keyboardDidHide", () => setIsSystemKeyboardOpen(false));
+
+		return () => {
+			showSub.remove();
+			hideSub.remove();
+		};
 	}, []);
 
 	const isUiDisabled = appBusy.busy.isBusy || isNavLocked;
@@ -998,8 +1008,13 @@ export function ServiceUpsertScreen(props: {
 	const onSaveAndAddAnother = useCallback(() => onSave("addAnother"), [onSave]);
 	const isSaveDisabled = isUiDisabled || !validation.isValid || !effectiveServiceUnitId;
 
-	const screenBottomPad = tabBarHeight + 12;
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const formBottomPadding = useMemo(() => {
+		return getStandardScrollBottomPadding({
+			basePadding: styles.formContainer.paddingBottom,
+			keyboardOpen: isSystemKeyboardOpen,
+		});
+	}, [isSystemKeyboardOpen]);
 	const dismissKeyboardOnBackgroundPress = useCallback(() => {
 		if (mode !== "create") return;
 		Keyboard.dismiss();
@@ -1024,19 +1039,13 @@ export function ServiceUpsertScreen(props: {
 	return (
 		<>
 			<BAIInlineHeaderScaffold title={headerTitle} variant='exit' onLeftPress={guardedOnExit} disabled={isUiDisabled}>
-				<BAIScreen padded={false} safeTop={false} safeBottom={false} style={styles.root}>
+				<BAIScreen tabbed padded={false} safeTop={false} safeAreaGradientBottom style={styles.root}>
 					<TouchableWithoutFeedback onPress={dismissKeyboardOnBackgroundPress} accessible={false}>
-						<View
-							style={[
-								styles.screen,
-								styles.scroll,
-								{ backgroundColor: theme.colors.background, paddingBottom: screenBottomPad },
-							]}
-						>
+						<View style={[styles.screen, styles.scroll, { backgroundColor: theme.colors.background }]}>
 							<BAISurface style={[styles.card, { borderColor }]} padded={false}>
 								<ScrollView
 									style={styles.formScroll}
-									contentContainerStyle={styles.formContainer}
+									contentContainerStyle={[styles.formContainer, { paddingBottom: formBottomPadding }]}
 									showsVerticalScrollIndicator={false}
 									showsHorizontalScrollIndicator={false}
 									keyboardShouldPersistTaps='handled'
@@ -1320,7 +1329,7 @@ const styles = StyleSheet.create({
 	},
 	formContainer: {
 		paddingHorizontal: 14,
-		paddingBottom: 250,
+		paddingBottom: 24,
 		gap: 12,
 	},
 	formTextInput: {

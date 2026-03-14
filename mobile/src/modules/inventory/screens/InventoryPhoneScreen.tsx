@@ -54,9 +54,6 @@ import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/in
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import type { InventoryProduct } from "@/modules/inventory/inventory.types";
 import { InventoryRow } from "@/modules/inventory/InventoryRow";
-import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
-import { formatCompactNumber } from "@/lib/locale/businessLocale";
-
 import { categoriesApi } from "@/modules/categories/categories.api";
 import { categoryKeys } from "@/modules/categories/categories.queries";
 import type { Category } from "@/modules/categories/categories.types";
@@ -70,14 +67,24 @@ import { useInsertedRowAttention } from "@/shared/hooks/useInsertedRowAttention"
 import { useOperationalQueryAutoRefresh } from "@/shared/hooks/useOperationalQueryAutoRefresh";
 
 type InventorySellableTabValue = "ITEMS" | "SERVICES";
+type InventoryServiceStatusTabValue = "ALL" | "ACTIVE" | "ARCHIVED";
 type InventoryHealthTabValue = "ALL" | "LOW_STOCK" | "OUT_OF_STOCK" | "IN_STOCK";
 
 const DECIMAL_PATTERN = /^-?\d+(\.\d+)?$/;
 const INVENTORY_PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 300;
 
-function formatCompactCount(value: number, countryCode?: string | null): string {
-	return formatCompactNumber(value, countryCode);
+function formatCompactCount(value: number): string {
+	const n = Number.isFinite(value) ? value : 0;
+	const abs = Math.abs(n);
+	if (abs < 1000) {
+		return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
+	}
+	return new Intl.NumberFormat(undefined, {
+		notation: "compact",
+		compactDisplay: "short",
+		maximumFractionDigits: abs >= 10000 ? 0 : 1,
+	}).format(n);
 }
 
 function clampPrecisionScale(value: unknown): number {
@@ -216,6 +223,20 @@ function normalizeHealthTab(raw: unknown): InventoryHealthTabValue {
 	return "ALL";
 }
 
+function normalizeServiceStatusTab(raw: unknown): InventoryServiceStatusTabValue {
+	const s = String(raw ?? "")
+		.trim()
+		.toUpperCase();
+	if (s === "ALL" || s === "ARCHIVED") return s;
+	return "ACTIVE";
+}
+
+function filterByStatusTab(items: InventoryProduct[], status: InventoryServiceStatusTabValue): InventoryProduct[] {
+	if (status === "ARCHIVED") return items.filter((item) => item.isActive === false);
+	if (status === "ACTIVE") return items.filter((item) => item.isActive !== false);
+	return items;
+}
+
 // ------------------------------
 // Inventory Health tab filtering
 // ------------------------------
@@ -322,10 +343,9 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	const theme = useTheme();
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const surfaceAlt = theme.colors.surfaceVariant ?? theme.colors.surface;
-	const { countryCode } = useActiveBusinessMeta();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 
-	const params = useLocalSearchParams<{ q?: string; filter?: string; type?: string }>();
+	const params = useLocalSearchParams<{ q?: string; filter?: string; status?: string; type?: string }>();
 	const paramQ = useMemo(() => String(params.q ?? "").trim(), [params.q]);
 
 	const [q, setQ] = useState(paramQ);
@@ -349,13 +369,17 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	// URL-state normalization
 	const sellableTabValue: InventorySellableTabValue = useMemo(() => normalizeSellableTab(params.type), [params.type]);
 	const healthTabValue: InventoryHealthTabValue = useMemo(() => normalizeHealthTab(params.filter), [params.filter]);
+	const serviceStatusTabValue: InventoryServiceStatusTabValue = useMemo(
+		() => normalizeServiceStatusTab(params.status),
+		[params.status],
+	);
 	const productsQuery = useInfiniteQuery({
-		queryKey: inventoryKeys.productsInfinite(debouncedQ, { includeArchived: false }),
+		queryKey: inventoryKeys.productsInfinite(debouncedQ, { includeArchived: true }),
 		initialPageParam: undefined as string | undefined,
 		queryFn: ({ pageParam }) =>
 			inventoryApi.listProducts({
 				q: debouncedQ || undefined,
-				includeArchived: false,
+				includeArchived: true,
 				limit: INVENTORY_PAGE_SIZE,
 				cursor: pageParam ?? undefined,
 			}),
@@ -397,17 +421,35 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	);
 
 	// Sellable partition (for counts)
-	const allItemItems = useMemo(() => filterBySellableTab(allItems, "ITEMS"), [allItems]);
-	const allServiceItems = useMemo(() => filterBySellableTab(allItems, "SERVICES"), [allItems]);
+	const activeItems = useMemo(() => filterByStatusTab(allItems, "ACTIVE"), [allItems]);
+	const allItemItems = useMemo(() => filterBySellableTab(activeItems, "ITEMS"), [activeItems]);
+	const allServiceItems = useMemo(() => filterBySellableTab(activeItems, "SERVICES"), [activeItems]);
+	const serviceItems = useMemo(() => filterBySellableTab(allItems, "SERVICES"), [allItems]);
+	const serviceActiveItems = useMemo(() => filterByStatusTab(serviceItems, "ACTIVE"), [serviceItems]);
+	const serviceArchivedItems = useMemo(() => filterByStatusTab(serviceItems, "ARCHIVED"), [serviceItems]);
 
 	// Apply sellable selection
-	const sellableItems = useMemo(() => filterBySellableTab(allItems, sellableTabValue), [allItems, sellableTabValue]);
+	const sellableItems = useMemo(() => {
+		if (sellableTabValue === "SERVICES") {
+			return filterByStatusTab(serviceItems, serviceStatusTabValue);
+		}
+		return filterBySellableTab(activeItems, sellableTabValue);
+	}, [activeItems, sellableTabValue, serviceItems, serviceStatusTabValue]);
 
 	// Health tabs and counts apply to Items only.
 	const showHealthTabs = sellableTabValue === "ITEMS";
+	const showServiceStatusTabs = sellableTabValue === "SERVICES";
 	const itemsForHealth = useMemo(() => (showHealthTabs ? sellableItems : []), [showHealthTabs, sellableItems]);
 	const healthCounts = useMemo(() => getInventoryHealthCounts(itemsForHealth), [itemsForHealth]);
 	const healthAllCount = itemsForHealth.length;
+	const serviceStatusTabs: readonly BAIGroupTab<InventoryServiceStatusTabValue>[] = useMemo(
+		() => [
+			{ label: "Active", value: "ACTIVE", count: serviceActiveItems.length },
+			{ label: "All", value: "ALL", count: serviceItems.length },
+			{ label: "Archive", value: "ARCHIVED", count: serviceArchivedItems.length },
+		],
+		[serviceActiveItems.length, serviceArchivedItems.length, serviceItems.length],
+	);
 
 	// Apply health filter only when valid
 	const filteredItems = useMemo(() => {
@@ -417,12 +459,13 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 	const rowAttentionTokens = useInsertedRowAttention(
 		useMemo(() => filteredItems.map((item) => item.id), [filteredItems]),
 		{
-			scopeKey: `${routeScope}:${sellableTabValue}:${healthTabValue}:${debouncedQ}`,
+			scopeKey: `${routeScope}:${sellableTabValue}:${serviceStatusTabValue}:${healthTabValue}:${debouncedQ}`,
 		},
 	);
 
 	const isSearching = trimmedQ.length > 0;
 	const hasActiveFilter = showHealthTabs && healthTabValue !== "ALL";
+	const hasActiveServiceStatusFilter = showServiceStatusTabs && serviceStatusTabValue !== "ACTIVE";
 
 	const onRefresh = useCallback(() => {
 		if (refreshInFlightRef.current || productsQuery.isFetching) return;
@@ -444,13 +487,13 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 
 			// Services: clear health filter (stock doesn’t apply)
 			if (v === "SERVICES") {
-				router.setParams({ type: "SERVICES", filter: undefined });
+				router.setParams({ type: "SERVICES", filter: undefined, status: undefined });
 				return;
 			}
 
 			// Items: keep filter param if present (or leave undefined)
 			if (v === "ITEMS") {
-				router.setParams({ type: undefined });
+				router.setParams({ type: undefined, status: undefined });
 				return;
 			}
 		},
@@ -462,6 +505,18 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 			if (!canNavigate) return;
 			if (v === "ALL") router.setParams({ filter: undefined });
 			else router.setParams({ filter: v });
+		},
+		[canNavigate, router],
+	);
+
+	const setServiceStatusTab = useCallback(
+		(v: InventoryServiceStatusTabValue) => {
+			if (!canNavigate) return;
+			if (v === "ACTIVE") {
+				router.setParams({ status: undefined });
+				return;
+			}
+			router.setParams({ status: v });
 		},
 		[canNavigate, router],
 	);
@@ -492,10 +547,18 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 		? inventoryHealthEmptyTitle(healthTabValue)
 		: isSearching
 			? sellableTabValue === "SERVICES"
-				? "No Matching Services"
+				? serviceStatusTabValue === "ARCHIVED"
+					? "No Matching Archived Services"
+					: serviceStatusTabValue === "ALL"
+						? "No Matching Services"
+						: "No Matching Active Services"
 				: "No Matching Items"
 			: sellableTabValue === "SERVICES"
-				? "No Services Yet"
+				? serviceStatusTabValue === "ARCHIVED"
+					? "No Archived Services"
+					: serviceStatusTabValue === "ALL"
+						? "No Services Yet"
+						: "No Active Services"
 				: "No Items Yet";
 
 	const emptyBody = hasActiveFilter
@@ -503,10 +566,21 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 		: isSearching
 			? "Adjust Your Search Or Scan A Different Barcode."
 			: sellableTabValue === "SERVICES"
-				? "Create Your First Service To Start Selling Time-Based Work."
+				? serviceStatusTabValue === "ARCHIVED"
+					? "Archived services will appear here."
+					: serviceStatusTabValue === "ALL"
+						? "Create Your First Service To Start Selling Time-Based Work."
+						: serviceItems.length === 0
+							? "Create Your First Service To Start Selling Time-Based Work."
+							: "Switch to All or Archived to review other services."
 				: "Add Your First Item To Begin Tracking Inventory.";
 
-	const showPrimaryEmptyCta = !isSearching && !hasActiveFilter && filteredItems.length === 0 && !productsQuery.isError;
+	const showPrimaryEmptyCta =
+		!isSearching &&
+		!hasActiveFilter &&
+		!hasActiveServiceStatusFilter &&
+		filteredItems.length === 0 &&
+		!productsQuery.isError;
 
 	const renderInventoryRow = useCallback(
 		({ item }: { item: InventoryProduct }) => {
@@ -618,7 +692,7 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 											value={sellableTabValue}
 											onChange={setSellableTab}
 											disabled={!canNavigate}
-											countFormatter={(count) => formatCompactCount(count, countryCode)}
+											countFormatter={formatCompactCount}
 										/>
 									</View>
 
@@ -630,7 +704,19 @@ export default function InventoryPhoneScreen({ routeScope = "inventory" }: { rou
 												value={healthTabValue}
 												onChange={setHealthTab}
 												disabled={!canNavigate}
-												countFormatter={(count) => formatCompactCount(count, countryCode)}
+												countFormatter={formatCompactCount}
+											/>
+										</View>
+									) : null}
+
+									{showServiceStatusTabs ? (
+										<View style={styles.tabsRowTight}>
+											<BAIGroupTabs<InventoryServiceStatusTabValue>
+												tabs={serviceStatusTabs}
+												value={serviceStatusTabValue}
+												onChange={setServiceStatusTab}
+												disabled={!canNavigate}
+												countFormatter={formatCompactCount}
 											/>
 										</View>
 									) : null}

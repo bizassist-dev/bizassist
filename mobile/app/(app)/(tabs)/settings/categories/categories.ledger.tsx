@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
 	},
 	listContent: {
 		paddingTop: 4,
-		paddingBottom: 8,
+		paddingBottom: 200,
 		gap: 0,
 	},
 	list: {

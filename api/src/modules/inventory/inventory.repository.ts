@@ -89,6 +89,52 @@ export class InventoryRepository {
 			include: {
 				unit: true,
 				category: true,
+				productModifierGroups: {
+					orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+					select: {
+						modifierGroupId: true,
+						sortOrder: true,
+					},
+				},
+				productOptionSets: {
+					orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+					include: {
+						optionSet: {
+							select: {
+								id: true,
+								name: true,
+								displayName: true,
+								sortOrder: true,
+							},
+						},
+					},
+				},
+				productVariations: {
+					where: { isActive: true },
+					orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+					include: {
+						optionValues: {
+							orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+							include: {
+								optionSet: {
+									select: {
+										id: true,
+										name: true,
+										displayName: true,
+										sortOrder: true,
+									},
+								},
+								optionValue: {
+									select: {
+										id: true,
+										value: true,
+										sortOrder: true,
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		});
 

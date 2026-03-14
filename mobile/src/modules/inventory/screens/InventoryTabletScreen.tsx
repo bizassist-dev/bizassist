@@ -42,7 +42,6 @@ import { formatMoney } from "@/shared/money/money.format";
 import { InventorySearchBar } from "@/modules/inventory/components/InventorySearchBar";
 import { InventoryMovementRow } from "@/modules/inventory/components/InventoryMovementRow";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
-import { formatCompactNumber } from "@/lib/locale/businessLocale";
 
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { mapInventoryRouteToScope, type InventoryRouteScope } from "@/modules/inventory/navigation.scope";
@@ -226,8 +225,17 @@ function formatMoneyWithCurrency(value: unknown, currencyCode: string): string |
 	return formatMoney({ amount: base, currencyCode });
 }
 
-function formatCompactCount(value: number, countryCode?: string | null): string {
-	return formatCompactNumber(value, countryCode);
+function formatCompactCount(value: number): string {
+	const n = Number.isFinite(value) ? value : 0;
+	const abs = Math.abs(n);
+	if (abs < 1000) {
+		return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
+	}
+	return new Intl.NumberFormat(undefined, {
+		notation: "compact",
+		compactDisplay: "short",
+		maximumFractionDigits: abs >= 10000 ? 0 : 1,
+	}).format(n);
 }
 
 function formatProductTypeLabel(value: unknown): string | null {
@@ -281,7 +289,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 	const theme = useTheme();
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const surfaceAlt = (theme.colors.surfaceVariant ?? theme.colors.surface) as string;
-	const { currencyCode, countryCode } = useActiveBusinessMeta();
+	const { currencyCode } = useActiveBusinessMeta();
 	const toScopedRoute = useCallback((route: string) => mapInventoryRouteToScope(route, routeScope), [routeScope]);
 
 	const params = useLocalSearchParams<{ q?: string; filter?: string; status?: string; type?: string }>();
@@ -633,8 +641,8 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 		if (movementsQuery.isLoading) return "Loading";
 		const count = movementsQuery.data?.items?.length ?? 0;
 		if (count === 1) return "1 Movement";
-		return `${formatCompactCount(count, countryCode)} Movements`;
-	}, [countryCode, movementsQuery.data?.items?.length, movementsQuery.isLoading]);
+		return `${formatCompactCount(count)} Movements`;
+	}, [movementsQuery.data?.items?.length, movementsQuery.isLoading]);
 
 	return (
 		<BAIScreen
@@ -696,7 +704,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 											value={sellableTabValue}
 											onChange={onSetSellable}
 											disabled={!canNavigate}
-											countFormatter={(count) => formatCompactCount(count, countryCode)}
+											countFormatter={formatCompactCount}
 										/>
 									</View>
 
@@ -706,7 +714,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 											value={statusTabValue}
 											onChange={onSetStatus}
 											disabled={!canNavigate}
-											countFormatter={(count) => formatCompactCount(count, countryCode)}
+											countFormatter={formatCompactCount}
 										/>
 									</View>
 								</View>
@@ -718,7 +726,7 @@ export default function InventoryTabletScreen({ routeScope = "inventory" }: { ro
 											value={healthTabValue}
 											onChange={onSetHealthTab}
 											disabled={!canNavigate}
-											countFormatter={(count) => formatCompactCount(count, countryCode)}
+											countFormatter={formatCompactCount}
 										/>
 									</View>
 								) : null}

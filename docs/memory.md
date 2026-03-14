@@ -26,6 +26,54 @@ Quick index:
 - See **2026-03-13 — Shared Group Tabs Motion Lock** for the canonical animated pill behavior, label transition, and heavy-tab handoff timing of `BAIGroupTabs`.
 - See **2026-03-13 — Modifier Flow Header Ownership Transition Lock** for the canonical route-level header ownership strategy that prevents layout displacement during modifier back/exit transitions.
 - See **2026-03-13 — Screen Top Padding Governance Lock** for the default `paddingTop: 0` rule on screen containers and content wrappers.
+- See **2026-03-14 — Base Screen Canvas Layout Lock** for the canonical screen shell using `BAIScreen` canvas ownership, fixed top header, body scroll ownership, and bottom safe-area scrim.
+
+## 2026-03-14 — Base Screen Canvas Layout Lock
+
+### Memory Lock
+
+- Canonical policy name is **Base Screen Canvas Layout**.
+- Canonical masterplan reference is:
+  - `docs/MASTERPLAN_GUIDE.md` section `1.10.4 Base Screen Canvas Layout Governance (Locked)`
+
+### Locked Decisions
+
+- The screen itself is the canvas:
+  - `BAIScreen` owns the page background and outer shell
+  - do not wrap the full screen body in one giant bordered card just to create a page container
+- The primary top header is fixed chrome:
+  - use a fixed `BAIHeader` above the scrollable body
+  - do not place the primary header inside the scrolling content tree
+- Body content scrolls under the fixed header:
+  - use one main scroll owner for the screen body unless a documented flow requires otherwise
+  - hide the vertical scrollbar on polished operational screens unless a strong usability reason requires it
+- Bottom Safe-Area Scrim is part of the canonical shell:
+  - use the `BAIScreen` bottom scrim treatment for tabbed operational screens and other screens whose body visually runs toward the bottom dock/safe-area edge
+  - treat the scrim as shell chrome, not as an ad hoc per-screen gradient overlay
+- Screen content should be organized as section surfaces, not one monolithic wrapper:
+  - use independent `BAISurface` sections for hero, actions, details, activity, forms, or related groups
+  - avoid nesting the entire screen inside a single parent `BAISurface`
+- Screen body spacing must remain ownership-driven:
+  - keep top padding at `0` unless a documented exception exists
+  - default screen body horizontal padding is `12` on phone and `16` on tablet
+  - default section-to-section vertical gap is `12`
+  - default section surface inner padding is `16`
+  - bottom padding should account for tab bar / safe-area overlap plus a small breathing margin
+  - default extra breathing margin above the bottom dock is `12`
+  - when the keyboard is open and the screen uses the standard scrolling shell, apply keyboard-open bottom padding `250` to protect lower inputs/actions from overlap
+- Width behavior must remain responsive:
+  - center content in a bounded content column on larger screens
+  - collapse horizontally competitive layouts into stacked compact layouts on narrower screens
+
+### Enforcement
+
+- New screen work should begin from this shell before any feature-specific visual tuning.
+- If a screen feels visually messy, audit shell ownership first:
+  - header ownership
+  - scroll ownership
+  - giant-wrapper-card usage
+  - compact-width stacking behavior
+- Do not patch screen-shell problems with random paddings, duplicate headers, or extra outer wrapper cards.
 
 ## 2026-03-13 — Screen Top Padding Governance Lock
 
@@ -101,12 +149,14 @@ Quick index:
 - The avatar is treated as the default identity anchor for shared headers when no competing right-side action exists.
 - Top-header avatar placeholders are locked at `44` points high.
 - Top-header action buttons occupying the same header-affordance role are locked at `44` points high and must mirror avatar height.
+- Moving forward, top headers are fixed at the top of the screen and must not scroll with body content.
 
 ### Enforcement
 
 - New shared-header work must start from the rule: avatar by default, but no avatar when a right-side action exists.
 - Any exception requires an explicit product reason and must preserve title centering and header action clarity.
 - Future top-header action clusters must not reintroduce mixed heights or avatar-plus-action combinations in shared headers.
+- New screen work must treat the header as persistent chrome above the scrollable region, not as content inside the scrolling body.
 
 ## 2026-03-13 — Shared Group Tabs Motion Lock
 

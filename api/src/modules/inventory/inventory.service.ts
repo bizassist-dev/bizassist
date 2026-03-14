@@ -254,6 +254,117 @@ export class InventoryService {
 		}
 
 		const primaryImageUrl = await resolveProductImageUrl(product.primaryImageUrl ?? null);
+		const productVariations = Array.isArray((product as any).productVariations)
+			? (product as any).productVariations
+					.map((variation: any) => {
+						const pairs = Array.isArray(variation?.optionValues) ? variation.optionValues : [];
+						const labelFromPairs = pairs
+							.map((pair: any) => String(pair?.optionValue?.value ?? "").trim())
+							.filter(Boolean)
+							.join(", ");
+						return {
+							variationKey: String(variation?.variationKey ?? "").trim(),
+							label: String(variation?.displayName ?? "").trim() || labelFromPairs,
+							valueMap: pairs.reduce(
+								(acc: Record<string, string>, pair: any) => {
+									const optionSetId = String(pair?.optionSetId ?? pair?.optionSet?.id ?? "").trim();
+									const optionValueId = String(pair?.optionValueId ?? pair?.optionValue?.id ?? "").trim();
+									if (optionSetId && optionValueId) acc[optionSetId] = optionValueId;
+									return acc;
+								},
+								{} as Record<string, string>,
+							),
+							sortOrder:
+								typeof variation?.sortOrder === "number" && Number.isFinite(variation.sortOrder)
+									? variation.sortOrder
+									: 0,
+						};
+					})
+					.filter((variation: any) => variation.variationKey.length > 0)
+			: [];
+
+		const optionSelections = Array.isArray((product as any).productOptionSets)
+			? (product as any).productOptionSets
+					.map((selection: any) => {
+						const selectedValues = productVariations
+							.flatMap((variation: { variationKey: string; valueMap: Record<string, string> }) => {
+								const optionValueId = variation.valueMap[String(selection?.optionSetId ?? "").trim()];
+								if (!optionValueId) return [];
+								const sourceVariation = Array.isArray((product as any).productVariations)
+									? (product as any).productVariations.find(
+											(candidate: any) => String(candidate?.variationKey ?? "").trim() === variation.variationKey,
+										)
+									: null;
+								const sourcePair = Array.isArray(sourceVariation?.optionValues)
+									? sourceVariation.optionValues.find(
+											(pair: any) =>
+												String(pair?.optionValueId ?? pair?.optionValue?.id ?? "").trim() === optionValueId,
+										)
+									: null;
+								return [
+									{
+										optionValueId,
+										optionValueName: String(sourcePair?.optionValue?.value ?? "").trim(),
+										sortOrder:
+											typeof sourcePair?.optionValue?.sortOrder === "number" &&
+											Number.isFinite(sourcePair.optionValue.sortOrder)
+												? sourcePair.optionValue.sortOrder
+												: 0,
+									},
+								];
+							})
+							.reduce(
+								(
+									acc: Array<{ optionValueId: string; optionValueName: string; sortOrder: number }>,
+									value: { optionValueId: string; optionValueName: string; sortOrder: number },
+								) => {
+									if (acc.some((existing) => existing.optionValueId === value.optionValueId)) return acc;
+									acc.push(value);
+									return acc;
+								},
+								[],
+							)
+							.sort(
+								(
+									a: { optionValueId: string; optionValueName: string; sortOrder: number },
+									b: { optionValueId: string; optionValueName: string; sortOrder: number },
+								) => a.sortOrder - b.sortOrder,
+							);
+
+						return {
+							optionSetId: String(selection?.optionSetId ?? "").trim(),
+							optionSetName:
+								String(selection?.optionSet?.displayName ?? "").trim() ||
+								String(selection?.optionSet?.name ?? "").trim(),
+							selectedValueIds: selectedValues.map(
+								(value: { optionValueId: string; optionValueName: string; sortOrder: number }) => value.optionValueId,
+							),
+							selectedValueNames: selectedValues
+								.map(
+									(value: { optionValueId: string; optionValueName: string; sortOrder: number }) =>
+										value.optionValueName,
+								)
+								.filter((value: string) => value.length > 0),
+							sortOrder:
+								typeof selection?.sortOrder === "number" && Number.isFinite(selection.sortOrder)
+									? selection.sortOrder
+									: 0,
+						};
+					})
+					.filter((selection: any) => selection.optionSetId.length > 0)
+			: [];
+
+		const modifierGroupIds = Array.isArray((product as any).productModifierGroups)
+			? (product as any).productModifierGroups
+					.slice()
+					.sort((a: any, b: any) => {
+						const aSort = typeof a?.sortOrder === "number" && Number.isFinite(a.sortOrder) ? a.sortOrder : 0;
+						const bSort = typeof b?.sortOrder === "number" && Number.isFinite(b.sortOrder) ? b.sortOrder : 0;
+						return aSort - bSort;
+					})
+					.map((entry: any) => String(entry?.modifierGroupId ?? "").trim())
+					.filter(Boolean)
+			: [];
 
 		return {
 			product: {
@@ -304,51 +415,9 @@ export class InventoryService {
 				posTileMode: (product as any).posTileMode === "IMAGE" ? "IMAGE" : "COLOR",
 				posTileColor: typeof (product as any).posTileColor === "string" ? (product as any).posTileColor : null,
 				posTileLabel: typeof (product as any).posTileLabel === "string" ? (product as any).posTileLabel : null,
-				optionSelections: Array.isArray((product as any).productOptionSets)
-					? (product as any).productOptionSets.map((selection: any) => {
-							const selectedValues = Array.isArray(selection?.selectedValues) ? selection.selectedValues : [];
-							return {
-								optionSetId: String(selection?.optionSetId ?? ""),
-								optionSetName: String(selection?.OptionSet?.name ?? "").trim(),
-								selectedValueIds: selectedValues
-									.map((value: any) => String(value?.optionValueId ?? "").trim())
-									.filter(Boolean),
-								selectedValueNames: selectedValues
-									.map((value: any) => String(value?.OptionValue?.name ?? "").trim())
-									.filter(Boolean),
-								sortOrder:
-									typeof selection?.sortOrder === "number" && Number.isFinite(selection.sortOrder)
-										? selection.sortOrder
-										: 0,
-							};
-						})
-					: [],
-				variations: Array.isArray((product as any).productVariations)
-					? (product as any).productVariations.map((variation: any) => {
-							const pairs = Array.isArray(variation?.values) ? variation.values : [];
-							const labelFromPairs = pairs
-								.map((pair: any) => String(pair?.OptionValue?.name ?? "").trim())
-								.filter(Boolean)
-								.join(", ");
-							return {
-								variationKey: String(variation?.variationKey ?? "").trim(),
-								label: String(variation?.label ?? "").trim() || labelFromPairs,
-								valueMap: pairs.reduce(
-									(acc: Record<string, string>, pair: any) => {
-										const optionSetId = String(pair?.optionSetId ?? "").trim();
-										const optionValueId = String(pair?.optionValueId ?? "").trim();
-										if (optionSetId && optionValueId) acc[optionSetId] = optionValueId;
-										return acc;
-									},
-									{} as Record<string, string>,
-								),
-								sortOrder:
-									typeof variation?.sortOrder === "number" && Number.isFinite(variation.sortOrder)
-										? variation.sortOrder
-										: 0,
-							};
-						})
-					: [],
+				modifierGroupIds,
+				optionSelections,
+				variations: productVariations,
 				isActive: Boolean(product.isActive),
 
 				createdAt: toIso(product.createdAt),

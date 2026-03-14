@@ -38,10 +38,22 @@ This framework is mandatory for premium UX quality across mobile app and website
 - Perceived loading quality must be intentional (`skeleton` over long spinner where possible).
 
 ### 0.2 Principle 2 - Cognitive Load + Cognitive Fluency
+
+## Header Governance
+
+- Top headers are fixed top chrome.
+- Top headers must stay pinned while the screen body scrolls.
+- Do not place the primary top header inside scrollable content.
+- If a screen needs sticky in-card subheaders, those are separate from the primary top header and must not replace it.
 - One dominant task per screen.
 - Use progressive disclosure for advanced controls.
 - Labels/microcopy must be concrete and predictable.
 - Favor familiar interaction patterns in operational workflows.
+- Moving forward, the default screen shell is:
+  - fixed top header
+  - scrollable body underneath
+  - no giant outer wrapper card around the whole screen
+  - bottom safe-area scrim handled by the screen shell rather than custom one-off overlays
 
 ### 0.3 Principle 3 - Micro-Interactions + Peak-End Rule
 - Every tap/action returns immediate feedback.
@@ -62,12 +74,32 @@ This framework is mandatory for premium UX quality across mobile app and website
 
 ### 1.2 Containers
 - Use `BAIScreen` as the root.
-- Use **one primary `BAISurface`** per screen as the main container.
+- Treat the screen as the canvas; `BAIScreen` owns the page shell.
+- Use `BAISurface` for independent sections, not as one giant full-screen wrapper by default.
 - Avoid raw bordered `<View>` cards; default to `BAISurface`.
+
+### 1.2.1 Base screen shell (locked)
+- Canonical shell:
+  - `BAIScreen` root
+  - fixed top header above the body
+  - one main body scroll owner
+  - section surfaces inside the body
+  - bottom safe-area scrim when the screen runs into the dock / safe-area edge
+- Standard screen paddings:
+  - phone horizontal body padding: `12`
+  - tablet horizontal body padding: `16`
+  - section-to-section vertical gap: `12`
+  - section surface inner padding: `16`
+  - extra bottom breathing margin above dock/safe-area overlap: `12`
+  - keyboard-open bottom padding for the standard scrolling shell: `250`
+- Hide the vertical scrollbar on polished operational screens unless usability clearly requires it.
+- Prefer centered bounded content width on large screens.
+- On narrow screens, stack horizontally competitive hero/action/stat layouts instead of forcing tablet-style side-by-side composition.
 
 ### 1.3 Spacing
 - Use consistent padding patterns (do not improvise spacing per screen).
 - Ensure list containers “kiss” the bottom tab bar (avoid floating gaps).
+- Start from `paddingTop: 0`; spacing should not be used to compensate for broken shell ownership.
 
 ---
 

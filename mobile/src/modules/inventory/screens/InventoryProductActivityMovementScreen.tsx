@@ -7,7 +7,7 @@
 
 import React, { useCallback, useMemo } from "react";
 import { Image, StyleSheet, View } from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -15,6 +15,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
+import { BAIHeader } from "@/components/ui/BAIHeader";
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAITimeAgo } from "@/components/system/BAITimeAgo";
 
@@ -23,7 +24,6 @@ import type { InventoryMovement, InventoryProductDetail } from "@/modules/invent
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { unitDisplayToken } from "@/modules/units/units.format";
-import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 
 type Params = { id?: string; movementId?: string };
 
@@ -222,17 +222,16 @@ export default function InventoryMovementDetailScreen() {
 	const movementId = useMemo(() => String(params.movementId ?? "").trim(), [params.movementId]);
 	const enabled = !!productId && !!movementId;
 	const onBack = useCallback(() => {
+		if (router.canGoBack?.()) {
+			router.back();
+			return;
+		}
 		if (!productId) {
 			router.back();
 			return;
 		}
 		router.replace(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}/activity` as any);
 	}, [productId, router]);
-	const headerOptions = useInventoryHeader("detail", {
-		title: "Activity Details",
-		headerBackTitle: "Activity",
-		onBack,
-	});
 
 	// Identity anchor (product name + on-hand). Read-only and safe.
 	const productDetailQuery = useQuery<InventoryProductDetail>({
@@ -302,19 +301,19 @@ export default function InventoryMovementDetailScreen() {
 	}, [reason, delta]);
 
 	return (
-		<>
-			{/* ✅ BACK only. No Exit/cancel semantics here. */}
-			<Stack.Screen options={headerOptions} />
+		<BAIScreen
+			padded={false}
+			tabbed
+			scroll
+			safeTop={false}
+			safeBottom={false}
+			style={styles.root}
+			contentContainerStyle={styles.screen}
+			scrollProps={{ showsVerticalScrollIndicator: false }}
+		>
+			<BAIHeader title='Activity Details' variant='back' onLeftPress={onBack} />
 
-			<BAIScreen
-				padded={false}
-				tabbed
-				scroll
-				safeTop={false}
-				style={styles.root}
-				contentContainerStyle={styles.screen}
-				scrollProps={{ showsVerticalScrollIndicator: false }}
-			>
+			<View style={styles.content}>
 				<BAISurface style={styles.card} padded>
 					{isLoading ? (
 						<View style={styles.center}>
@@ -436,16 +435,18 @@ export default function InventoryMovementDetailScreen() {
 						</>
 					)}
 				</BAISurface>
-			</BAIScreen>
-		</>
+			</View>
+		</BAIScreen>
 	);
 }
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
 
-	screen: {
+	content: {
 		paddingHorizontal: 12,
+	},
+	screen: {
 		paddingBottom: 12,
 		paddingTop: 0,
 		gap: 12,

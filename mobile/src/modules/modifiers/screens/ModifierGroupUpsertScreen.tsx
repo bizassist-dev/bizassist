@@ -43,6 +43,7 @@ import {
 	parseModifierSelectionParams,
 	type ModifierPickerInboundParams,
 } from "@/modules/modifiers/modifierPicker.contract";
+import { getModifierCardBackgroundColor } from "@/modules/modifiers/modifierColors";
 import {
 	buildModifierGroupDraftId,
 	clearModifierGroupDraft,
@@ -429,6 +430,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 
 	const backRoute = mode === "settings" ? "/(app)/(tabs)/settings/modifiers" : "/(app)/(tabs)/inventory/modifiers";
 	const outline = theme.colors.outline;
+	const modifierCardBackgroundColor = getModifierCardBackgroundColor(theme);
 	const controlSurfaceInteractive = useMemo(
 		() => ({
 			borderColor: outline,
@@ -1336,6 +1338,7 @@ export function ModifierGroupUpsertScreen({ mode, intent }: Props) {
 												styles.modifierSetConfigContainer,
 												{
 													borderColor: outline,
+													backgroundColor: modifierCardBackgroundColor,
 												},
 											]}
 										>

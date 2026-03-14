@@ -20,12 +20,34 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 	// no-op
 });
 
+const DEV_IGNORED_WARNING_FRAGMENTS = [
+	"Sending `onAnimatedValueUpdate` with no listeners registered.",
+	"Sending `onAnimatedValueUpdate` with no listeners registered",
+	"onAnimatedValueUpdate",
+];
+
+function shouldIgnoreDevWarning(args: unknown[]): boolean {
+	const firstArg = args[0];
+	if (typeof firstArg !== "string") return false;
+
+	return DEV_IGNORED_WARNING_FRAGMENTS.some((fragment) => firstArg.includes(fragment));
+}
+
 if (__DEV__) {
-	LogBox.ignoreLogs([
-		"Sending `onAnimatedValueUpdate` with no listeners registered.",
-		"Sending `onAnimatedValueUpdate` with no listeners registered",
-		"onAnimatedValueUpdate",
-	]);
+	LogBox.ignoreLogs(DEV_IGNORED_WARNING_FRAGMENTS);
+
+	const warnFilterState = globalThis as typeof globalThis & {
+		__BAI_DEV_WARN_FILTER_INSTALLED__?: boolean;
+	};
+
+	if (!warnFilterState.__BAI_DEV_WARN_FILTER_INSTALLED__) {
+		const originalWarn = console.warn.bind(console);
+		console.warn = (...args: unknown[]) => {
+			if (shouldIgnoreDevWarning(args)) return;
+			originalWarn(...args);
+		};
+		warnFilterState.__BAI_DEV_WARN_FILTER_INSTALLED__ = true;
+	}
 }
 
 function RootShell() {

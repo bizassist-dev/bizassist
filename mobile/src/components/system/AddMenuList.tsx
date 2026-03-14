@@ -34,7 +34,6 @@ export function AddMenuList({ items, disabled, titleVariant = "subtitle" }: AddM
 	const chevronColor = theme.colors.onSurfaceVariant;
 	const iconBorderColor = theme.colors.outlineVariant ?? theme.colors.outline;
 	const iconTint = theme.colors.onSurface;
-	const iconBg = theme.colors.background;
 	const separatorColor = theme.colors.outlineVariant ?? theme.colors.outline;
 
 	return (
@@ -56,7 +55,7 @@ export function AddMenuList({ items, disabled, titleVariant = "subtitle" }: AddM
 						>
 							<View style={styles.rowLeft}>
 								{item.icon ? (
-									<View style={[styles.iconCircle, { borderColor: iconBorderColor, backgroundColor: iconBg }]}>
+									<View style={[styles.iconCircle, { borderColor: iconBorderColor }]}>
 										{item.iconFamily === "ion" ? (
 											<Ionicons
 												name={item.icon as keyof typeof Ionicons.glyphMap}

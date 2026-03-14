@@ -2,18 +2,20 @@
 // path: src/modules/inventory/screens/InventoryProductDetailScreen.tsx
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useTheme } from "react-native-paper";
 import { FontAwesome6 } from "@expo/vector-icons";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useNavigation } from "@react-navigation/native";
 
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAITimeAgo } from "@/components/system/BAITimeAgo";
 import { BAIButton } from "@/components/ui/BAIButton";
 import { BAICTAPillButton } from "@/components/ui/BAICTAButton";
 import { BAIConfirmArchiveModal, BAIConfirmRestoreModal } from "@/components/ui/BAIConfirmEntityActionModal";
+import { BAIHeader } from "@/components/ui/BAIHeader";
 import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { BAIScreen } from "@/components/ui/BAIScreen";
@@ -36,10 +38,14 @@ import {
 	mapInventoryRouteToScope,
 	type InventoryRouteScope,
 } from "@/modules/inventory/navigation.scope";
+import {
+	runGovernedBack,
+	runGovernedExitReplace,
+	resolveProcessExitRoute,
+} from "@/modules/inventory/navigation.governance";
 import { inventoryKeys } from "@/modules/inventory/inventory.queries";
 import { formatOnHand } from "@/modules/inventory/inventory.selectors";
 import type { InventoryMovement, InventoryProductDetail } from "@/modules/inventory/inventory.types";
-import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 import { toCacheBustedImageUri } from "@/modules/media/media.image";
 import { unitsApi } from "@/modules/units/units.api";
 import { unitDisplayToken } from "@/modules/units/units.format";
@@ -361,40 +367,40 @@ function DetailRow({ label, value, isLast = false }: { label: string; value: Rea
 	);
 }
 
-function MetaRow({
-	label,
-	value,
-	divider,
-	dividerColor,
-}: {
-	label: string;
-	value: React.ReactNode;
-	divider?: boolean;
-	dividerColor?: string;
-}) {
-	return (
-		<View
-			style={[
-				styles.metaRow,
-				divider ? [styles.metaRowDivider, dividerColor ? { borderBottomColor: dividerColor } : null] : null,
-			]}
-		>
-			<BAIText variant='caption' muted style={styles.metaLabel}>
-				{label}
-			</BAIText>
+function isSelfRedirectingProductDetailHistoryEntry(navigationState: unknown, productId: string): boolean {
+	const state = navigationState as
+		| {
+				routes?: Array<{ name?: string; path?: string; params?: object | null }>;
+				index?: number;
+		  }
+		| undefined;
+	const routes = Array.isArray(state?.routes) ? state.routes : [];
+	const currentIndex = typeof state?.index === "number" ? state.index : routes.length - 1;
+	const currentRoute = currentIndex >= 0 ? routes[currentIndex] : null;
+	const previousRoute = currentIndex > 0 ? routes[currentIndex - 1] : null;
+	if (!previousRoute) return false;
 
-			<View style={styles.metaValueCol}>
-				{typeof value === "string" ? (
-					<BAIText variant='body' numberOfLines={1} ellipsizeMode='tail' style={styles.metaValueText}>
-						{value}
-					</BAIText>
-				) : (
-					value
-				)}
-			</View>
-		</View>
+	const currentRouteName = String(currentRoute?.name ?? "").trim();
+	const previousRouteName = String(previousRoute?.name ?? "").trim();
+	const currentRoutePath = typeof currentRoute?.path === "string" ? currentRoute.path.trim() : "";
+	const previousRoutePath = typeof previousRoute?.path === "string" ? previousRoute.path.trim() : "";
+	const previousRouteParams =
+		previousRoute?.params && typeof previousRoute.params === "object"
+			? (previousRoute.params as Record<string, unknown>)
+			: null;
+	const previousRouteProductId = typeof previousRouteParams?.id === "string" ? previousRouteParams.id.trim() : "";
+
+	return (
+		(currentRoutePath.length > 0 && currentRoutePath === previousRoutePath) ||
+		(currentRouteName.length > 0 &&
+			currentRouteName === previousRouteName &&
+			previousRouteProductId.length > 0 &&
+			previousRouteProductId === productId)
 	);
 }
+
+const DETAIL_RETURN_TO_KEY = "returnTo" as const;
+const DETAIL_FROM_SAVE_KEY = "fromSave" as const;
 
 export default function InventoryProductDetailScreen({
 	routeScope = "inventory",
@@ -402,9 +408,11 @@ export default function InventoryProductDetailScreen({
 	routeScope?: InventoryRouteScope;
 }) {
 	const router = useRouter();
+	const navigation = useNavigation();
 	const queryClient = useQueryClient();
 	const theme = useTheme();
 	const tabBarHeight = useBottomTabBarHeight();
+	const { width: windowWidth } = useWindowDimensions();
 	const { canNavigate, safePush } = useNavLock({ lockMs: 650 });
 	const { busy, withBusy } = useAppBusy();
 	const { showError, showSuccess } = useAppToast();
@@ -413,9 +421,15 @@ export default function InventoryProductDetailScreen({
 	const { currencyCode } = useActiveBusinessMeta();
 	const operationalRefreshInterval = useOperationalQueryAutoRefresh();
 
-	const params = useLocalSearchParams<{ id: string; localUri?: string }>();
+	const params = useLocalSearchParams<{ id: string; localUri?: string; returnTo?: string; fromSave?: string }>();
 	const productId = useMemo(() => String(params.id ?? "").trim(), [params.id]);
 	const incomingLocalImageUri = useMemo(() => String(params[LOCAL_URI_KEY] ?? "").trim(), [params]);
+	const rawReturnTo = useMemo(() => String(params[DETAIL_RETURN_TO_KEY] ?? "").trim(), [params]);
+	const fromSave = useMemo(() => String(params[DETAIL_FROM_SAVE_KEY] ?? "").trim() === "1", [params]);
+	const resolvedDetailBackRoute = useMemo(
+		() => resolveProcessExitRoute(rawReturnTo, rootRoute),
+		[rawReturnTo, rootRoute],
+	);
 	const optionsDraftId = useMemo(() => (productId ? `item_edit_${productId}` : ""), [productId]);
 	const { patch: patchOptionsDraft } = useProductCreateDraft(optionsDraftId || undefined);
 	const enabled = !!productId;
@@ -464,16 +478,24 @@ export default function InventoryProductDetailScreen({
 	const movements = useMemo(() => movementsQuery.data?.items ?? [], [movementsQuery.data?.items]);
 	const onBackToInventory = useCallback(() => {
 		if (!canNavigate) return;
-		router.replace(rootRoute as any);
-	}, [canNavigate, rootRoute, router]);
-	const backLabel = routeScope === "settings-items-services" ? "Items" : "Inventory";
 
-	const headerOptions = useInventoryHeader("detail", {
-		title: "Item Details Overview",
-		headerBackTitle: backLabel,
-		backLabel,
-		onBack: onBackToInventory,
-	});
+		const shouldReplace = fromSave || isSelfRedirectingProductDetailHistoryEntry(navigation.getState(), productId);
+		if (shouldReplace) {
+			runGovernedExitReplace(resolvedDetailBackRoute, {
+				router: router as any,
+				disabled: !canNavigate,
+			});
+			return;
+		}
+
+		runGovernedBack(
+			{
+				router: router as any,
+				disabled: !canNavigate,
+			},
+			resolvedDetailBackRoute,
+		);
+	}, [canNavigate, fromSave, navigation, productId, resolvedDetailBackRoute, router]);
 
 	const unitById = useMemo(() => {
 		const map = new Map<string, Unit>();
@@ -560,6 +582,13 @@ export default function InventoryProductDetailScreen({
 	}, [categoryIsActive, product]);
 
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const imageActionOverlayButtonStyle = useMemo(
+		() => ({
+			backgroundColor: theme.dark ? "rgba(18, 18, 18, 0.56)" : "rgba(255, 255, 255, 0.58)",
+			borderColor: theme.dark ? "rgba(255, 255, 255, 0.18)" : "rgba(17, 24, 39, 0.12)",
+		}),
+		[theme.dark],
+	);
 
 	const categoryDotStyle = useMemo(() => {
 		const fill = categoryColor ? categoryColor : "transparent";
@@ -567,46 +596,41 @@ export default function InventoryProductDetailScreen({
 		return { backgroundColor: fill, borderColor: stroke };
 	}, [borderColor, categoryColor]);
 
-	const imageUri = useMemo(
-		() => optimisticImageUri || toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt),
-		[optimisticImageUri, product],
+	const remoteImageUri = useMemo(
+		() => toCacheBustedImageUri((product as any)?.primaryImageUrl, (product as any)?.updatedAt),
+		[product],
 	);
+	const imageUri = useMemo(() => optimisticImageUri || remoteImageUri, [optimisticImageUri, remoteImageUri]);
+	const imageSource = useMemo(() => (imageUri ? { uri: imageUri } : null), [imageUri]);
 
 	useEffect(() => {
-		if (!incomingLocalImageUri) return;
-		setOptimisticImageUri(incomingLocalImageUri);
-		(router as any).setParams?.({ [LOCAL_URI_KEY]: undefined });
-	}, [incomingLocalImageUri, router]);
+		if (incomingLocalImageUri) {
+			setOptimisticImageUri(incomingLocalImageUri);
+			(router as any).setParams?.({ [LOCAL_URI_KEY]: undefined });
+			return;
+		}
 
-	// Spinner/processing indication for RN Image
-	const [isImageLoading, setIsImageLoading] = useState(false);
+		// If the remote product image has been removed in the photo screen, drop the stale optimistic preview.
+		if (!remoteImageUri && optimisticImageUri) {
+			setOptimisticImageUri("");
+		}
+	}, [incomingLocalImageUri, optimisticImageUri, remoteImageUri, router]);
+
 	const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
-	const rawTileMode = String((product as any)?.posTileMode ?? "")
-		.trim()
-		.toUpperCase();
-	const hasRemoteTileImage = imageUri.length > 0;
-	const tileMode =
-		rawTileMode === "IMAGE" ? "IMAGE" : rawTileMode === "COLOR" ? "COLOR" : hasRemoteTileImage ? "IMAGE" : "COLOR";
 	const selectedTileColor =
 		typeof (product as any)?.posTileColor === "string" && (product as any).posTileColor.trim().length > 0
 			? (product as any).posTileColor.trim()
 			: null;
 	const tileColor = selectedTileColor ?? "";
-	const previewHasImage = tileMode === "IMAGE" && !!imageUri;
-	const hasColor = tileMode === "COLOR" && !!selectedTileColor;
+	const previewHasImage = !!imageUri;
+	const hasColor = !!selectedTileColor;
 	const hasVisualTile = previewHasImage || hasColor;
 	const shouldShowEmpty = !hasVisualTile;
 
 	useEffect(() => {
-		if (previewHasImage) {
-			setIsImageLoading(true);
-			setImageLoadFailed(false);
-		} else {
-			setIsImageLoading(false);
-			setImageLoadFailed(false);
-		}
-	}, [previewHasImage]);
+		setImageLoadFailed(false);
+	}, [imageUri, previewHasImage]);
 	const tileLabel = useMemo(() => {
 		const raw =
 			typeof (product as any)?.posTileLabel === "string"
@@ -642,8 +666,9 @@ export default function InventoryProductDetailScreen({
 
 	const onEditItem = useCallback(() => {
 		if (!productId) return;
-		safePush(router, toScopedRoute(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}/edit`));
-	}, [productId, router, safePush, toScopedRoute]);
+		const editRoute = toScopedRoute(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}/edit`);
+		safePush(router, `${editRoute}?${DETAIL_RETURN_TO_KEY}=${encodeURIComponent(resolvedDetailBackRoute)}`);
+	}, [productId, resolvedDetailBackRoute, router, safePush, toScopedRoute]);
 
 	const onOpenOptionsVariations = useCallback(() => {
 		if (!productId || !product || !canNavigate) return;
@@ -679,7 +704,7 @@ export default function InventoryProductDetailScreen({
 											String(setId ?? "").trim(),
 											String(valueId ?? "").trim(),
 										]),
-								  )
+									)
 								: {},
 						sortOrder:
 							typeof variation?.sortOrder === "number" && Number.isFinite(variation.sortOrder)
@@ -789,7 +814,8 @@ export default function InventoryProductDetailScreen({
 	const isArchived = product?.isActive === false;
 	const canEditItem = !!productId && !!product && !isArchived;
 	const variationCount = Array.isArray(product?.variations) ? product.variations.length : 0;
-	const optionsVariationsButtonLabel = variationCount > 0 ? `Options & Variations (${variationCount})` : "Options & Variations";
+	const optionsVariationsButtonLabel =
+		variationCount > 0 ? `Options & Variations (${variationCount})` : "Options & Variations";
 	const canRestoreItem = !!productId && !!product && isArchived;
 	const canArchiveItem = !!productId && !!product && !isArchived;
 	const canPrimaryAction = isArchived ? canRestoreItem : canArchiveItem;
@@ -803,6 +829,11 @@ export default function InventoryProductDetailScreen({
 	const title = (product as any)?.name?.trim() ? (product as any).name : "Item";
 	const productType = (product as any)?.type;
 	const typeDisplay = useMemo(() => formatProductTypeLabel(productType), [productType]);
+	const statusLabel = isArchived ? "Archived" : "Active";
+	const secondaryTextColor = theme.dark
+		? (theme.colors.onSurfaceVariant ?? theme.colors.onSurface)
+		: theme.colors.onSurface;
+	const heroImageWidth = Math.min(Math.max(windowWidth - 132, 180), 240);
 
 	const unitPrecisionScale = useMemo(
 		() =>
@@ -819,6 +850,35 @@ export default function InventoryProductDetailScreen({
 		if (!source) return "—";
 		return formatOnHand(source as any);
 	}, [product, productWithResolvedUnit]);
+	const priceSummary = useMemo(() => {
+		const source = productWithResolvedUnit ?? product;
+		if (!source) return "—";
+		return (
+			formatMoneyWithUnit(
+				(source as any).price ?? (source as any).unitPrice ?? (source as any).sellPrice,
+				currencyCode,
+				source,
+			) ?? "—"
+		);
+	}, [currencyCode, product, productWithResolvedUnit]);
+	const costSummary = useMemo(() => {
+		const source = productWithResolvedUnit ?? product;
+		if (!source) return "—";
+		return formatMoneyWithUnit((source as any).cost ?? (source as any).unitCost, currencyCode, source) ?? "—";
+	}, [currencyCode, product, productWithResolvedUnit]);
+	const heroMetaLine = useMemo(() => {
+		const tokens = [meta.hasSku ? `SKU ${meta.sku}` : "", meta.hasBarcode ? meta.barcode : ""].filter(Boolean);
+		return tokens.length > 0 ? tokens.join(" • ") : "Inventory catalog item";
+	}, [meta.barcode, meta.hasBarcode, meta.hasSku, meta.sku]);
+	const heroSummaryCards = useMemo(
+		() => [
+			{ label: "Type", value: typeDisplay || "Item" },
+			{ label: "On Hand", value: onHandSummary || "—" },
+			{ label: "Price", value: priceSummary },
+			{ label: "Cost", value: costSummary },
+		],
+		[costSummary, onHandSummary, priceSummary, typeDisplay],
+	);
 
 	// ✅ UDQI: normalize movement deltas so InventoryMovementRow doesn’t misinterpret integer-decimals
 	const movementsForDisplay = useMemo(() => {
@@ -859,10 +919,11 @@ export default function InventoryProductDetailScreen({
 	const details = useMemo(() => {
 		if (!productWithResolvedUnit) return [];
 		const p: any = productWithResolvedUnit ?? {};
+		const missingValue = "—";
 		const rows: { label: string; value: React.ReactNode }[] = [];
 
 		const name = typeof p.name === "string" ? p.name.trim() : "";
-		if (isMeaningfulDetailText(name)) rows.push({ label: "Name", value: name });
+		rows.push({ label: "Name", value: isMeaningfulDetailText(name) ? name : missingValue });
 
 		const posTileNameRaw =
 			typeof p.posTileName === "string"
@@ -873,51 +934,71 @@ export default function InventoryProductDetailScreen({
 						? p.tileLabel
 						: "";
 		const posTileName = sanitizeLabelInput(posTileNameRaw).trim();
-		if (isMeaningfulDetailText(posTileName)) rows.push({ label: "POS Tile Name", value: posTileName });
+		rows.push({ label: "POS Tile Name", value: isMeaningfulDetailText(posTileName) ? posTileName : missingValue });
 
-		if (typeof p.isActive === "boolean") rows.push({ label: "Status", value: p.isActive ? "Active" : "Archived" });
+		rows.push({
+			label: "Status",
+			value: typeof p.isActive === "boolean" ? (p.isActive ? "Active" : "Archived") : missingValue,
+		});
 
-		if (isMeaningfulDetailText(p.description)) rows.push({ label: "Description", value: p.description.trim() });
+		rows.push({
+			label: "Description",
+			value: isMeaningfulDetailText(p.description) ? p.description.trim() : missingValue,
+		});
 
 		const unitTypeLabel = formatSelectedUnitLabel(p);
-		if (unitTypeLabel && isMeaningfulDetailText(unitTypeLabel)) rows.push({ label: "Unit Type", value: unitTypeLabel });
+		rows.push({
+			label: "Unit Type",
+			value: unitTypeLabel && isMeaningfulDetailText(unitTypeLabel) ? unitTypeLabel : missingValue,
+		});
 
 		const unitCategoryLabel = formatUnitCategoryLabel(p.unitCategory);
-		if (unitCategoryLabel) rows.push({ label: "Unit Category", value: unitCategoryLabel });
+		rows.push({ label: "Unit Category", value: unitCategoryLabel || missingValue });
 
 		const unitPrecisionLabel = formatPrecisionLabel(p.unitPrecisionScale);
-		if (unitPrecisionLabel) rows.push({ label: "Precision", value: unitPrecisionLabel });
+		rows.push({ label: "Precision", value: unitPrecisionLabel || missingValue });
 
 		const price = formatMoneyWithUnit(p.price ?? p.unitPrice ?? p.sellPrice, currencyCode, p);
-		if (price && isMeaningfulDetailText(price)) rows.push({ label: "Price", value: price });
+		rows.push({ label: "Price", value: price && isMeaningfulDetailText(price) ? price : missingValue });
 
 		const cost = formatMoneyWithUnit(p.cost ?? p.unitCost, currencyCode, p);
-		if (cost && isMeaningfulDetailText(cost)) rows.push({ label: "Cost", value: cost });
+		rows.push({ label: "Cost", value: cost && isMeaningfulDetailText(cost) ? cost : missingValue });
 
-		if (typeof p.trackInventory === "boolean")
-			rows.push({ label: "Track Inventory", value: p.trackInventory ? "Yes" : "No" });
+		rows.push({
+			label: "Track Inventory",
+			value: typeof p.trackInventory === "boolean" ? (p.trackInventory ? "Yes" : "No") : missingValue,
+		});
+
+		const modifierSetCount = Array.isArray(p.modifierGroupIds) ? p.modifierGroupIds.length : 0;
+		rows.push({
+			label: "Modifier Sets",
+			value: modifierSetCount > 0 ? `${modifierSetCount} linked` : missingValue,
+		});
 
 		const variationCount = Array.isArray(p.variations) ? p.variations.length : 0;
 		rows.push({
 			label: "Variations",
-			value: variationCount > 0 ? `${variationCount} configured` : "None",
+			value: variationCount > 0 ? `${variationCount} configured` : missingValue,
 		});
 
 		const optionSetCount = Array.isArray(p.optionSelections) ? p.optionSelections.length : 0;
 		rows.push({
 			label: "Option Sets",
-			value: optionSetCount > 0 ? `${optionSetCount} selected` : "None",
+			value: optionSetCount > 0 ? `${optionSetCount} selected` : missingValue,
 		});
 
 		// ✅ UDQI-CORRECT: reorder point uses the same resolved-mode formatter
 		const reorderResolved = resolveQuantityDisplay(p, "reorder", unitPrecisionScale);
 		const reorderBase = formatResolvedQuantity(reorderResolved, unitPrecisionScale);
 
-		if (reorderBase && isMeaningfulDetailText(reorderBase)) {
-			const reorderUnitToken = unitDisplayToken(p, "quantity", reorderResolved.value ?? undefined);
-			const reorderValue = reorderUnitToken ? `${reorderBase} ${reorderUnitToken}` : reorderBase;
-			rows.push({ label: "Reorder Point", value: reorderValue });
-		}
+		const reorderUnitToken = unitDisplayToken(p, "quantity", reorderResolved.value ?? undefined);
+		const reorderValue =
+			reorderBase && isMeaningfulDetailText(reorderBase)
+				? reorderUnitToken
+					? `${reorderBase} ${reorderUnitToken}`
+					: reorderBase
+				: missingValue;
+		rows.push({ label: "Reorder Point", value: reorderValue });
 
 		const createdAtLabel = formatReadableTime(p.createdAt);
 		if (createdAtLabel && isMeaningfulDetailText(createdAtLabel)) {
@@ -937,6 +1018,8 @@ export default function InventoryProductDetailScreen({
 					</View>
 				),
 			});
+		} else {
+			rows.push({ label: "Created", value: missingValue });
 		}
 
 		const updatedAtLabel = formatReadableTime(p.updatedAt);
@@ -957,45 +1040,15 @@ export default function InventoryProductDetailScreen({
 					</View>
 				),
 			});
+		} else {
+			rows.push({ label: "Last Updated", value: missingValue });
 		}
 
 		return rows;
 	}, [currencyCode, productWithResolvedUnit, unitPrecisionScale]);
 
 	const typeLabel = useMemo(() => (typeDisplay ? typeDisplay : ""), [typeDisplay]);
-	const showDetails = details.length > 0;
-
-	const metaRows = useMemo(
-		() =>
-			[
-				typeLabel ? { label: "Type", value: typeLabel } : null,
-				{ label: "On Hand", value: onHandSummary },
-				{
-					label: "Category",
-					value: (
-						<View style={styles.metaInline}>
-							{meta.hasCategory ? <View style={[styles.categoryDot, categoryDotStyle]} /> : null}
-							<BAIText variant='body' numberOfLines={1} ellipsizeMode='tail' style={styles.metaValueText}>
-								{meta.categoryName}
-							</BAIText>
-						</View>
-					),
-				},
-				meta.hasSku ? { label: "SKU", value: meta.sku } : null,
-				meta.hasBarcode ? { label: "Barcode", value: meta.barcode } : null,
-			].filter(Boolean) as { label: string; value: React.ReactNode }[],
-		[
-			categoryDotStyle,
-			meta.categoryName,
-			meta.hasBarcode,
-			meta.hasCategory,
-			meta.hasSku,
-			meta.barcode,
-			meta.sku,
-			onHandSummary,
-			typeLabel,
-		],
-	);
+	const showDetails = !!productWithResolvedUnit;
 
 	const activityContent = (() => {
 		if (movementsQuery.isLoading) {
@@ -1070,35 +1123,26 @@ export default function InventoryProductDetailScreen({
 	})();
 
 	return (
-		<>
-			<Stack.Screen options={headerOptions} />
+		<BAIScreen padded={false} tabbed safeTop={false} safeBottom={false} safeAreaGradientBottom style={styles.root}>
+			<BAIHeader title='Item Details' variant='back' onLeftPress={onBackToInventory} disabled={!canNavigate} />
 
-			<BAIScreen
-				padded={false}
-				tabbed
-				safeTop={false}
-				safeBottom={false}
-				style={styles.root}
-				contentContainerStyle={[styles.screen, { paddingBottom: tabBarHeight + 12 }]}
+			<ScrollView
+				style={styles.screenScroll}
+				contentContainerStyle={[styles.screenContent, { paddingBottom: tabBarHeight + 12 }]}
+				showsVerticalScrollIndicator={false}
+				keyboardShouldPersistTaps='handled'
 			>
-				<BAISurface style={[styles.card, { borderColor }]} padded={false}>
-					{!isLoading && !isError ? (
-						<View style={[styles.cardHeader, { borderBottomColor: borderColor }]}>
-							<BAIText variant='title'>Item Details</BAIText>
-						</View>
-					) : null}
-
-					<ScrollView
-						style={styles.cardScroll}
-						contentContainerStyle={styles.cardScrollContent}
-						showsVerticalScrollIndicator={false}
-						keyboardShouldPersistTaps='handled'
-					>
-						{isLoading ? (
+				{isLoading ? (
+					<View style={styles.contentColumn}>
+						<BAISurface style={styles.stateSurface}>
 							<View style={styles.center}>
 								<BAIActivityIndicator />
 							</View>
-						) : isError ? (
+						</BAISurface>
+					</View>
+				) : isError ? (
+					<View style={styles.contentColumn}>
+						<BAISurface style={styles.stateSurface}>
 							<View style={styles.center}>
 								{typeLabel ? (
 									<BAIText variant='caption' muted style={styles.typeLabel}>
@@ -1120,126 +1164,163 @@ export default function InventoryProductDetailScreen({
 									</BAIRetryButton>
 								</View>
 							</View>
-						) : (
-							<>
-								<View style={styles.imageHeaderRow}>
-									<View
-										style={[
-											styles.imagePreview,
-											{
-												borderColor,
-												backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-											},
-										]}
-									>
-										{previewHasImage ? (
-											<View style={styles.imageFill}>
-												<Image
-													source={{ uri: imageUri }}
-													style={styles.imagePreviewImage}
-													resizeMode='cover'
-													onLoadStart={() => {
-														setIsImageLoading(true);
-														setImageLoadFailed(false);
-													}}
-													onLoadEnd={() => setIsImageLoading(false)}
-													onError={() => {
-														setIsImageLoading(false);
-														setImageLoadFailed(true);
-													}}
-												/>
+						</BAISurface>
+					</View>
+				) : (
+					<View style={styles.contentColumn}>
+						<BAISurface style={styles.heroSurface} padded={false} radius={28} elevation={1}>
+							<View style={styles.heroSurfaceInner}>
+								<View style={styles.heroTopRow}>
+									<View style={[styles.heroMediaWrap, { width: heroImageWidth }]}>
+										<View
+											style={[
+												styles.imagePreview,
+												{
+													borderColor,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+											]}
+										>
+											{previewHasImage ? (
+												<View style={styles.imageFill}>
+													<Image
+														source={imageSource!}
+														style={styles.imagePreviewImage}
+														resizeMode='cover'
+														onLoad={() => {
+															setImageLoadFailed(false);
+														}}
+														onError={() => {
+															setImageLoadFailed(true);
+														}}
+													/>
 
-												{isImageLoading ? (
-													<View style={styles.imageLoadingOverlay} pointerEvents='none'>
-														<BAIActivityIndicator />
-													</View>
-												) : null}
-
-												{imageLoadFailed ? (
-													<View style={styles.imageLoadingOverlay} pointerEvents='none'>
-														<FontAwesome6
-															name='image'
-															size={48}
-															color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-														/>
-														<View style={{ height: 6 }} />
-														<BAIText variant='caption' muted>
-															Failed to load photo
-														</BAIText>
-													</View>
-												) : null}
-											</View>
-										) : hasColor ? (
-											<View style={[styles.imagePreviewImage, { backgroundColor: tileColor }]} />
-										) : shouldShowEmpty ? (
-											<View style={styles.imagePreviewEmpty}>
-												<FontAwesome6
-													name='image'
-													size={64}
-													color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
-												/>
-												<BAIText variant='caption' muted>
-													No Photo
-												</BAIText>
-											</View>
-										) : null}
+													{imageLoadFailed ? (
+														<View style={styles.imageLoadingOverlay} pointerEvents='none'>
+															<FontAwesome6
+																name='image'
+																size={48}
+																color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+															/>
+															<View style={{ height: 6 }} />
+															<BAIText variant='caption' muted>
+																Failed to load photo
+															</BAIText>
+														</View>
+													) : null}
+												</View>
+											) : hasColor ? (
+												<View style={[styles.imagePreviewImage, { backgroundColor: tileColor }]} />
+											) : shouldShowEmpty ? (
+												<View style={styles.imagePreviewEmpty}>
+													<FontAwesome6
+														name='image'
+														size={64}
+														color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+													/>
+													<BAIText variant='caption' muted>
+														No Photo
+													</BAIText>
+												</View>
+											) : null}
 											{shouldShowTileTextOverlay ? (
 												<PosTileTextOverlay label={tileLabel} name={tileItemName} textColor={tileLabelColor} />
 											) : null}
-									</View>
-									{!isArchived ? (
-										<View style={styles.imageActionColumn}>
-											<BAIIconButton
-												variant='outlined'
-												size='md'
-												icon='camera'
-												iconSize={34}
-												accessibilityLabel='Edit image'
-												onPress={onImagePress}
-												disabled={!canNavigate || isLoading}
-												style={styles.imageEditButtonOutside}
-											/>
+											{!isArchived ? (
+												<View style={styles.imageActionOverlay}>
+													<BAIIconButton
+														variant='outlined'
+														size='md'
+														icon='camera'
+														iconSize={30}
+														accessibilityLabel='Edit image'
+														onPress={onImagePress}
+														disabled={!canNavigate || isLoading}
+														style={[styles.imageActionButtonOverlay, imageActionOverlayButtonStyle]}
+													/>
+												</View>
+											) : null}
 										</View>
-									) : null}
-								</View>
+									</View>
 
-								<View style={styles.header}>
-									<View style={styles.headerLeft}>
-										<BAIText variant='title' numberOfLines={1} ellipsizeMode='tail' style={styles.title}>
+									<View style={styles.heroCopyWrap}>
+										<View style={styles.heroBadgeRow}>
+											<View
+												style={[
+													styles.heroBadge,
+													{
+														borderColor,
+														backgroundColor: isArchived
+															? (theme.colors.errorContainer ?? theme.colors.surfaceVariant)
+															: theme.colors.surface,
+													},
+												]}
+											>
+												<BAIText
+													variant='caption'
+													style={{
+														color: isArchived ? (theme.colors.error ?? theme.colors.onSurface) : theme.colors.onSurface,
+													}}
+												>
+													{statusLabel}
+												</BAIText>
+											</View>
+
+											{meta.hasCategory ? (
+												<View style={[styles.heroCategoryBadge, { borderColor }]}>
+													<View style={[styles.categoryDot, categoryDotStyle]} />
+													<BAIText variant='caption' numberOfLines={1} style={styles.heroCategoryText}>
+														{meta.categoryName}
+													</BAIText>
+												</View>
+											) : null}
+										</View>
+
+										<BAIText variant='title' numberOfLines={2} ellipsizeMode='tail' style={styles.heroTitle}>
 											{title}
 										</BAIText>
-										<BAIText variant='caption' muted numberOfLines={1} style={styles.headerSub}>
-											Status:{" "}
-											{typeof (product as any)?.isActive === "boolean"
-												? (product as any).isActive
-													? "Active"
-													: "Archived"
-												: "—"}
+
+										<BAIText
+											variant='body'
+											numberOfLines={2}
+											ellipsizeMode='tail'
+											style={[styles.heroMetaLine, { color: secondaryTextColor }]}
+										>
+											{heroMetaLine}
 										</BAIText>
 									</View>
 								</View>
 
-								<View
-									style={[
-										styles.metaPanel,
-										{ borderColor, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
-									]}
-								>
-									{metaRows.map((row, index) => (
-										<MetaRow
-											key={`${row.label}-${index}`}
-											label={row.label}
-											value={row.value}
-											divider={index < metaRows.length - 1}
-											dividerColor={borderColor}
-										/>
+								<View style={styles.heroStatsGrid}>
+									{heroSummaryCards.map((card) => (
+										<View
+											key={card.label}
+											style={[
+												styles.heroStatCard,
+												{
+													borderColor,
+													backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+												},
+											]}
+										>
+											<BAIText variant='caption' style={{ color: secondaryTextColor }}>
+												{card.label}
+											</BAIText>
+											<BAIText variant='subtitle' numberOfLines={2} ellipsizeMode='tail' style={styles.heroStatValue}>
+												{card.value}
+											</BAIText>
+										</View>
 									))}
 								</View>
+							</View>
+						</BAISurface>
 
-								{!isArchived ? (
-									<View style={[styles.itemFooterActions, styles.topActionsContainer]}>
+						{!isArchived ? (
+							<BAISurface style={styles.actionSurface} padded={false} radius={24} elevation={1}>
+								<View style={styles.actionSurfaceInner}>
+									<View style={styles.itemFooterActions}>
 										<BAICTAPillButton
-											variant='outline'
+											variant='solid'
 											intent='primary'
 											onPress={onEditItem}
 											disabled={!canEditItem || !canNavigate || isLoading}
@@ -1256,10 +1337,8 @@ export default function InventoryProductDetailScreen({
 											Adjust Stock
 										</BAICTAPillButton>
 									</View>
-								) : null}
 
-								{!isArchived ? (
-									<View style={[styles.itemFooterActions, styles.topActionsSecondaryContainer]}>
+									<View style={styles.itemFooterActions}>
 										<BAICTAPillButton
 											variant='outline'
 											intent='neutral'
@@ -1270,69 +1349,57 @@ export default function InventoryProductDetailScreen({
 											{optionsVariationsButtonLabel}
 										</BAICTAPillButton>
 									</View>
-								) : null}
+								</View>
+							</BAISurface>
+						) : null}
 
-								{showDetails ? (
-									<>
-										<View style={styles.detailsSectionContainerPadding}>
-											<View
-												style={[
-													styles.detailsSecondaryContainer,
-													{ borderColor, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
-												]}
-											>
-												<View style={[styles.sectionHeader, { borderBottomColor: borderColor }]}>
-													<BAIText variant='subtitle'>Details</BAIText>
-												</View>
-												<View style={styles.sectionBody}>
-													<View style={styles.detailsGridTight}>
-														{details.map((r, index) => (
-															<DetailRow
-																key={`${r.label}:${String(r.value)}`}
-																label={r.label}
-																value={r.value}
-																isLast={index === details.length - 1}
-															/>
-														))}
-													</View>
-												</View>
-											</View>
-										</View>
-									</>
-								) : null}
-
-								<View style={styles.recentSectionContainerPadding}>
-									<View
-										style={[
-											styles.detailsSecondaryContainer,
-											{ borderColor, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface },
-										]}
-									>
-										<View style={[styles.sectionHeader, { borderBottomColor: borderColor }]}>
-											<View style={styles.sectionHeaderText}>
-												<BAIText variant='subtitle'>Recent Activity</BAIText>
-												<BAIText variant='caption' muted>
-													Last 5 Movements
-												</BAIText>
-											</View>
-											<BAIButton
-												variant='outline'
-												intent='neutral'
-												size='sm'
-												onPress={onViewAllActivity}
-												disabled={!productId}
-												style={styles.sectionHeaderAction}
-												widthPreset='standard'
-											>
-												View All
-											</BAIButton>
-										</View>
-
-										<View style={styles.sectionBody}>{activityContent}</View>
+						{showDetails ? (
+							<BAISurface style={styles.sectionSurface} padded={false} radius={24} elevation={1}>
+								<View style={[styles.sectionHeader, { borderBottomColor: borderColor }]}>
+									<View style={styles.sectionHeaderText}>
+										<BAIText variant='subtitle'>Details</BAIText>
+										<BAIText variant='caption' style={{ color: secondaryTextColor }}>
+											Item profile and pricing information
+										</BAIText>
 									</View>
 								</View>
+								<View style={styles.sectionBody}>
+									<View style={styles.detailsGridTight}>
+										{details.map((r, index) => (
+											<DetailRow key={r.label} label={r.label} value={r.value} isLast={index === details.length - 1} />
+										))}
+									</View>
+								</View>
+							</BAISurface>
+						) : null}
 
-								<View style={[styles.itemFooterActions, styles.bottomActionsContainer]}>
+						<BAISurface style={styles.sectionSurface} padded={false} radius={24} elevation={1}>
+							<View style={[styles.sectionHeader, { borderBottomColor: borderColor }]}>
+								<View style={styles.sectionHeaderText}>
+									<BAIText variant='subtitle'>Recent Activity</BAIText>
+									<BAIText variant='caption' style={{ color: secondaryTextColor }}>
+										Last 5 inventory movements
+									</BAIText>
+								</View>
+								<BAIButton
+									variant='outline'
+									intent='neutral'
+									size='sm'
+									onPress={onViewAllActivity}
+									disabled={!productId}
+									style={styles.sectionHeaderAction}
+									widthPreset='standard'
+								>
+									View All
+								</BAIButton>
+							</View>
+
+							<View style={styles.sectionBody}>{activityContent}</View>
+						</BAISurface>
+
+						<BAISurface style={styles.actionSurface} padded={false} radius={24} elevation={1}>
+							<View style={styles.actionSurfaceInner}>
+								<View style={styles.itemFooterActions}>
 									{isArchived ? (
 										<>
 											<BAICTAPillButton
@@ -1377,99 +1444,131 @@ export default function InventoryProductDetailScreen({
 										</>
 									)}
 								</View>
-							</>
-						)}
-					</ScrollView>
-				</BAISurface>
-				<BAIConfirmArchiveModal
-					visible={isArchiveConfirmOpen}
-					entityLabel='item'
-					entityName={product?.name}
-					description='Archived items stay in historical records and are removed from active inventory lists.'
-					onDismiss={closeArchiveConfirm}
-					onConfirm={onConfirmArchive}
-					disabled={busy.isBusy}
-				/>
-				<BAIConfirmRestoreModal
-					visible={isRestoreConfirmOpen}
-					entityLabel='item'
-					entityName={product?.name}
-					description='Restored items return to active inventory lists.'
-					onDismiss={closeRestoreConfirm}
-					onConfirm={onConfirmRestore}
-					disabled={busy.isBusy}
-				/>
-			</BAIScreen>
-		</>
+							</View>
+						</BAISurface>
+					</View>
+				)}
+			</ScrollView>
+			<BAIConfirmArchiveModal
+				visible={isArchiveConfirmOpen}
+				entityLabel='item'
+				entityName={product?.name}
+				description='Archived items stay in historical records and are removed from active inventory lists.'
+				onDismiss={closeArchiveConfirm}
+				onConfirm={onConfirmArchive}
+				disabled={busy.isBusy}
+			/>
+			<BAIConfirmRestoreModal
+				visible={isRestoreConfirmOpen}
+				entityLabel='item'
+				entityName={product?.name}
+				description='Restored items return to active inventory lists.'
+				onDismiss={closeRestoreConfirm}
+				onConfirm={onConfirmRestore}
+				disabled={busy.isBusy}
+			/>
+		</BAIScreen>
 	);
 }
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
-	screen: { flex: 1, paddingHorizontal: 12, paddingBottom: 12, paddingTop: 0 },
-	card: {
-		flex: 1,
-		minHeight: 0,
-		borderWidth: 1,
-		borderRadius: 24,
-		gap: 6,
-		overflow: "hidden",
-		paddingHorizontal: 0,
-		paddingTop: 12,
-		paddingBottom: 12,
-	},
-	cardScroll: { flex: 1 },
-	cardScrollContent: { paddingBottom: 4 },
-	cardHeader: {
-		paddingHorizontal: 14,
-		paddingBottom: 10,
-		marginBottom: 0,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-	},
-	center: { padding: 16, alignItems: "center", justifyContent: "center" },
+	screenScroll: { flex: 1 },
+	screenContent: { paddingHorizontal: 14, paddingTop: 0, alignItems: "center" },
+	contentColumn: { width: "100%", maxWidth: 920, marginTop: -8 },
+	center: { padding: 24, alignItems: "center", justifyContent: "center", minHeight: 180 },
+	stateSurface: { marginBottom: 0 },
 
-	imageHeaderRow: {
+	heroSurface: {
+		marginBottom: 14,
+	},
+	heroSurfaceInner: {
+		padding: 16,
+		gap: 16,
+	},
+	heroTopRow: {
+		flexDirection: "column",
+		alignItems: "stretch",
+		gap: 14,
+	},
+	heroMediaWrap: {
+		alignSelf: "center",
+	},
+	heroCopyWrap: {
+		width: "100%",
+		gap: 10,
+		paddingTop: 2,
+		alignItems: "flex-start",
+	},
+	heroBadgeRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "center",
-		gap: 16,
-		marginBottom: 16,
+		flexWrap: "wrap",
+		gap: 8,
 	},
-	imageActionColumn: {
+	heroBadge: {
+		paddingHorizontal: 12,
+		paddingVertical: 7,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
+	},
+	heroCategoryBadge: {
+		flexDirection: "row",
 		alignItems: "center",
-		gap: 20,
+		gap: 8,
+		maxWidth: "100%",
+		paddingHorizontal: 12,
+		paddingVertical: 7,
+		borderRadius: 999,
+		borderWidth: StyleSheet.hairlineWidth,
 	},
-	imageEditButtonOutside: {
-		width: 60,
-		height: 60,
-		borderRadius: 30,
+	heroCategoryText: {
+		flexShrink: 1,
 	},
+	heroTitle: {
+		fontWeight: "700",
+	},
+	heroMetaLine: {
+		lineHeight: 20,
+	},
+	heroStatsGrid: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		justifyContent: "space-between",
+		rowGap: 10,
+	},
+	heroStatCard: {
+		width: "48.4%",
+		minHeight: 86,
+		borderRadius: 18,
+		borderWidth: StyleSheet.hairlineWidth,
+		paddingHorizontal: 14,
+		paddingVertical: 12,
+		justifyContent: "space-between",
+	},
+	heroStatValue: {
+		fontWeight: "700",
+	},
+
 	itemFooterActions: {
-		marginTop: 16,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
 	},
-	topActionsContainer: {
-		paddingHorizontal: 12,
-		paddingBottom: 12,
+	actionSurface: {
+		marginBottom: 14,
 	},
-	topActionsSecondaryContainer: {
-		paddingHorizontal: 12,
-		paddingTop: 0,
-		paddingBottom: 12,
-	},
-	bottomActionsContainer: {
-		paddingHorizontal: 12,
-		paddingVertical: 10,
+	actionSurfaceInner: {
+		padding: 14,
+		gap: 10,
 	},
 	footerActionButton: {
 		flex: 1,
 	},
 	imagePreview: {
-		width: 180,
+		width: "100%",
 		aspectRatio: 1,
-		borderRadius: 18,
+		borderRadius: 24,
 		borderWidth: 1,
 		overflow: "hidden",
 		position: "relative",
@@ -1491,86 +1590,24 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
+	imageActionOverlay: {
+		position: "absolute",
+		bottom: 12,
+		right: 12,
+		alignItems: "flex-end",
+		zIndex: 2,
+	},
+	imageActionButtonOverlay: {
+		width: 46,
+		height: 46,
+		borderRadius: 23,
+	},
 	imagePreviewEmpty: {
 		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
+		gap: 8,
 	},
-	tileLabelWrap: {
-		position: "absolute",
-		left: 2,
-		right: 2,
-		bottom: 2,
-		borderRadius: 16,
-		overflow: "hidden",
-		minHeight: 80,
-	},
-	tileLabelOverlay: {
-		...StyleSheet.absoluteFillObject,
-	},
-	tileLabelContent: {
-		paddingHorizontal: 10,
-		paddingTop: 6,
-		paddingBottom: 6,
-		justifyContent: "flex-start",
-		gap: 2,
-	},
-	tileNameOnlyContent: {
-		position: "absolute",
-		left: 0,
-		right: 0,
-		bottom: 0,
-		minHeight: 32,
-		paddingHorizontal: 10,
-		paddingVertical: 6,
-		justifyContent: "center",
-	},
-	tileLabelRow: {
-		minHeight: 36,
-		justifyContent: "flex-end",
-	},
-	tileNameRow: {
-		minHeight: 20,
-		justifyContent: "flex-start",
-	},
-	tileNamePill: {
-		alignSelf: "stretch",
-		width: "100%",
-		borderRadius: 999,
-		paddingHorizontal: 10,
-		paddingVertical: 4,
-	},
-	tileLabelText: {
-		fontWeight: "700",
-		fontSize: 30,
-	},
-	tileItemName: {
-		marginTop: 0,
-		fontSize: 18,
-	},
-	header: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		gap: 12,
-		paddingHorizontal: 12,
-	},
-	headerLeft: { flex: 1, minWidth: 0, gap: 6 },
-	headerSub: { opacity: 0.9 },
-
-	metaPanel: {
-		borderWidth: StyleSheet.hairlineWidth,
-		borderRadius: 16,
-		overflow: "hidden",
-		marginTop: 12,
-		marginHorizontal: 12,
-	},
-	metaRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
-	metaRowDivider: { borderBottomWidth: StyleSheet.hairlineWidth },
-	metaLabel: { width: 88 },
-	metaValueCol: { flex: 1, minWidth: 0 },
-	metaValueText: { flexShrink: 1 },
-	metaInline: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 },
 
 	categoryDot: { width: 12, height: 12, borderRadius: 9, borderWidth: 1 },
 
@@ -1579,9 +1616,12 @@ const styles = StyleSheet.create({
 
 	actions: { marginTop: 12, flexDirection: "row", gap: 10 },
 
+	sectionSurface: {
+		marginBottom: 14,
+	},
 	sectionHeader: {
-		paddingHorizontal: 12,
-		paddingVertical: 12,
+		paddingHorizontal: 16,
+		paddingVertical: 14,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
@@ -1589,28 +1629,14 @@ const styles = StyleSheet.create({
 	},
 	sectionHeaderText: { flex: 1, minWidth: 0, gap: 2 },
 	sectionHeaderAction: { marginLeft: 8 },
-	detailsSectionContainerPadding: {
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-	},
-	recentSectionContainerPadding: {
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-	},
-	detailsSecondaryContainer: {
-		borderWidth: StyleSheet.hairlineWidth,
-		borderRadius: 16,
-		overflow: "hidden",
-	},
-
-	sectionBody: { padding: 12 },
+	sectionBody: { padding: 16 },
 
 	emptyState: { paddingVertical: 6 },
 	detailsGridTight: { gap: 0 },
 
-	detailRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 },
-	detailLabel: { textTransform: "none", letterSpacing: 0, minWidth: 110, maxWidth: 130, flexShrink: 0 },
-	detailValue: { flex: 1, lineHeight: 18 },
+	detailRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 },
+	detailLabel: { textTransform: "none", letterSpacing: 0, minWidth: 112, maxWidth: 132, flexShrink: 0 },
+	detailValue: { flex: 1, lineHeight: 20 },
 	detailValueRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 4, flex: 1 },
 
 	inlineSep: { marginHorizontal: 4 },

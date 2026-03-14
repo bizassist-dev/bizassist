@@ -22,7 +22,8 @@ export function useInsertedRowAttention(
 	const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
 	useEffect(() => {
-		if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+		const isFabric = Boolean((globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager);
+		if (Platform.OS === "android" && !isFabric && UIManager.setLayoutAnimationEnabledExperimental) {
 			UIManager.setLayoutAnimationEnabledExperimental(true);
 		}
 	}, []);

@@ -52,7 +52,10 @@ function resolveActiveBusinessId(): string {
 
 const baseURL = resolveBaseUrl();
 const runtimeEnv = resolveRuntimeEnvironment();
-console.log("[httpClient] env/baseURL =", runtimeEnv, baseURL);
+const apiDebug = __DEV__ && process.env.EXPO_PUBLIC_API_DEBUG === "true";
+if (apiDebug) {
+	console.log("[httpClient] env/baseURL =", runtimeEnv, baseURL);
+}
 
 const API_TIMEOUT_MS_RAW = process.env.EXPO_PUBLIC_API_TIMEOUT_MS ?? "30000";
 const API_TIMEOUT_MS = Number(API_TIMEOUT_MS_RAW);

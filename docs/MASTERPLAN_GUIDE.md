@@ -980,6 +980,12 @@ Rules:
 - avatar/default-right-rail behavior must preserve title centering and avoid compensating layout nudges
 - if a custom header cannot remain balanced with the default avatar, the avatar should be suppressed rather than forcing mixed right-rail content
 
+6. Fixed-position rule:
+
+- top headers are persistent top chrome and must remain fixed while screen content scrolls underneath
+- do not place the primary top header inside scrollable content containers
+- new app screens should start from a fixed-header layout unless an explicit governance exception is documented
+
 6. Header sizing rule:
 
 - top-header avatar placeholders are locked at `44` points high
@@ -1027,6 +1033,51 @@ Rules:
 7. Back/exit bug triage rule:
    - if a modifier back or exit transition misplaces the UI layout, audit route-level header ownership first
    - do not patch the symptom by adding extra wrapper spacing, duplicate headers, or runtime header flips
+
+### 1.10.4 Base Screen Canvas Layout Governance (Locked)
+
+1. Canonical pattern name is **Base Screen Canvas Layout**.
+2. The screen itself is the canvas:
+   - `BAIScreen` owns the page background, safe-area integration, and outer shell
+   - do not wrap the full body content in one giant bordered card to simulate a screen container
+3. Fixed-header rule:
+   - the primary top header must be fixed chrome above the body
+   - use `BAIHeader` or another stable top-header implementation outside the scrollable content tree
+   - do not place the primary header inside the main body scroll container
+4. Scroll-ownership rule:
+   - the screen body should have one main scroll owner by default
+   - nested scroll regions are exception-only and must be justified by a documented UX reason
+   - polished operational screens should hide the vertical scrollbar unless a clear usability reason requires it
+5. Bottom-safe-area-scrim rule:
+   - bottom safe-area scrim is part of the canonical screen shell, not an ad hoc screen decoration
+   - when the body visually runs toward the bottom dock or safe-area edge, the screen shell should use the canonical bottom scrim treatment
+   - prefer the shared `BAIScreen` scrim path over hand-built gradient overlays
+6. Section-surface rule:
+   - organize screen content as independent `BAISurface` sections for hero, actions, forms, details, activity, or related content groups
+   - do not place the entire screen body inside one monolithic parent surface
+7. Spacing-ownership rule:
+   - screen body wrappers start from `paddingTop: 0`
+   - default screen body horizontal padding is `12` on phone and `16` on tablet
+   - default section-to-section vertical gap is `12`
+   - default section surface inner padding is `16`
+   - bottom padding must account for the tab bar / safe area plus a small breathing margin
+   - default extra breathing margin above the bottom dock is `12`
+   - when the keyboard is open and the screen uses the standard scrolling shell, apply keyboard-open bottom padding `250`
+   - do not use arbitrary top/bottom padding to compensate for header or shell ownership mistakes
+8. Responsive-width rule:
+   - center content inside a bounded content column on larger screens
+   - if horizontal content becomes cramped on narrow screens, collapse that region into a stacked compact layout instead of preserving tablet-style side-by-side composition
+9. Screen-shell triage rule:
+   - when a screen feels messy, audit shell ownership before changing feature content:
+     - fixed header ownership
+     - scroll ownership
+     - bottom scrim ownership
+     - giant-wrapper-card usage
+     - compact-width stacking behavior
+10. This governance complements:
+    - **0.12 Bottom Tab Bar Dock Geometry**
+    - **0.13 Screen Top Padding Governance**
+    - **1.10.1 Top Header Avatar Placement Governance**
 
 ### 1.11 POS Numeric Bottom Sheet Keyboard Governance (Locked)
 

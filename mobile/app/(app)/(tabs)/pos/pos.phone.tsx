@@ -36,7 +36,6 @@ import { useAppBusy } from "@/hooks/useAppBusy";
 import { useAuth } from "@/modules/auth/AuthContext";
 import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
-import { formatCompactNumber } from "@/lib/locale/businessLocale";
 import type { CatalogProduct } from "@/modules/catalog/catalog.types";
 import { inventoryApi } from "@/modules/inventory/inventory.api";
 import { InventoryRow } from "@/modules/inventory/InventoryRow";
@@ -87,6 +86,8 @@ type CartLine = {
 
 type PosTab = "CATALOG" | "CART";
 type CatalogGroupTab = "ITEMS" | "SERVICES";
+type ItemCatalogFilterTab = "ALL" | "IN" | "LOW" | "OUT";
+type ServiceCatalogFilterTab = "ACTIVE" | "ALL" | "ARCHIVED";
 
 // POS layout + design lock (do not change without explicit approval).
 export const POS_LAYOUT_LOCK = "LOCKED_V1" as const;
@@ -259,6 +260,27 @@ function formatMoneyCompact(currencyCode: string, amountRaw: string): string {
 	return replaced || compact;
 }
 
+function formatCompactCount(value: number): string {
+	const n = Number.isFinite(value) ? value : 0;
+	const abs = Math.abs(n);
+	if (abs < 1000) {
+		return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
+	}
+	return new Intl.NumberFormat(undefined, {
+		notation: "compact",
+		compactDisplay: "short",
+		maximumFractionDigits: abs >= 10000 ? 0 : 1,
+	}).format(n);
+}
+
+function isServiceProduct(product: CatalogProduct): boolean {
+	return String(product.type ?? "PHYSICAL").toUpperCase() === "SERVICE";
+}
+
+function isActiveCatalogProduct(product: CatalogProduct): boolean {
+	return product.isActive !== false;
+}
+
 function resolveCatalogOnHandRaw(product: CatalogProduct, inCartLine?: CartLine): string {
 	const onHandRaw =
 		(product as any)?.onHand ??
@@ -347,7 +369,7 @@ export default function PosPhone() {
 	const userAvatarInitials = useMemo(() => getUserAvatarInitials(user), [user]);
 	const authUserId = typeof user?.id === "string" ? user.id.trim() : "";
 
-	const { currencyCode, businessName, countryCode, businessId } = useActiveBusinessMeta();
+	const { currencyCode, businessName, businessId } = useActiveBusinessMeta();
 	const { withBusy } = useAppBusy();
 
 	// Primary nav safety gate (canonical hook)
@@ -366,6 +388,8 @@ export default function PosPhone() {
 
 	const [tab, setTab] = useState<PosTab>("CATALOG");
 	const [catalogGroup, setCatalogGroup] = useState<CatalogGroupTab>("ITEMS");
+	const [itemCatalogFilter, setItemCatalogFilter] = useState<ItemCatalogFilterTab>("ALL");
+	const [serviceCatalogFilter, setServiceCatalogFilter] = useState<ServiceCatalogFilterTab>("ACTIVE");
 	const [q, setQ] = useState("");
 	const trimmedQ = q.trim();
 
@@ -381,7 +405,8 @@ export default function PosPhone() {
 
 	const productsQuery = useQuery({
 		queryKey: ["pos", "catalog", "products", businessId || "no-business", trimmedQ],
-		queryFn: ({ signal }) => inventoryApi.listProducts({ q: trimmedQ || undefined, limit: 100 }, { signal }),
+		queryFn: ({ signal }) =>
+			inventoryApi.listProducts({ q: trimmedQ || undefined, includeArchived: true, limit: 100 }, { signal }),
 		enabled: !!businessId,
 		staleTime: 30_000,
 		refetchInterval: operationalRefreshInterval,
@@ -404,11 +429,11 @@ export default function PosPhone() {
 	const cartLines = useMemo(() => Object.values(cart), [cart]);
 	const itemCount = useMemo(() => cartLines.length, [cartLines]);
 	const itemCatalogCount = useMemo(
-		() => items.filter((product) => String(product.type ?? "PHYSICAL").toUpperCase() !== "SERVICE").length,
+		() => items.filter((product) => !isServiceProduct(product) && isActiveCatalogProduct(product)).length,
 		[items],
 	);
 	const serviceCatalogCount = useMemo(
-		() => items.filter((product) => String(product.type ?? "PHYSICAL").toUpperCase() === "SERVICE").length,
+		() => items.filter((product) => isServiceProduct(product) && isActiveCatalogProduct(product)).length,
 		[items],
 	);
 	const defaultCatalogGroup = useMemo<CatalogGroupTab>(() => {
@@ -432,6 +457,8 @@ export default function PosPhone() {
 		lastSessionScopeKeyRef.current = sessionScopeKey;
 		setTab("CATALOG");
 		setCatalogGroup("ITEMS");
+		setItemCatalogFilter("ALL");
+		setServiceCatalogFilter("ACTIVE");
 		setQ("");
 		setCart({});
 		setModifierPickerVisible(false);
@@ -440,17 +467,83 @@ export default function PosPhone() {
 		setLoadingModifierProductId(null);
 		router.setParams({ scannedBarcode: undefined } as any);
 	}, [router, sessionScopeKey]);
-	const visibleCatalogItems = useMemo(() => {
-		const showServices = catalogGroup === "SERVICES";
-		return items.filter((product) => {
-			const isService = String(product.type ?? "PHYSICAL").toUpperCase() === "SERVICE";
-			return showServices ? isService : !isService;
+	const activeItems = useMemo(() => items.filter((product) => isActiveCatalogProduct(product)), [items]);
+	const itemCatalogItems = useMemo(() => activeItems.filter((product) => !isServiceProduct(product)), [activeItems]);
+	const serviceCatalogItems = useMemo(() => items.filter((product) => isServiceProduct(product)), [items]);
+	const activeServiceCatalogItems = useMemo(
+		() => serviceCatalogItems.filter((product) => isActiveCatalogProduct(product)),
+		[serviceCatalogItems],
+	);
+	const archivedServiceCatalogItems = useMemo(
+		() => serviceCatalogItems.filter((product) => product.isActive === false),
+		[serviceCatalogItems],
+	);
+	const itemStatusKindById = useMemo(() => {
+		const map = new Map<string, ReturnType<typeof resolveCatalogStatus>["kind"]>();
+		itemCatalogItems.forEach((product) => {
+			map.set(product.id, resolveCatalogStatus(product, cart[product.id]).kind);
 		});
-	}, [catalogGroup, items]);
+		return map;
+	}, [cart, itemCatalogItems]);
+	const itemFilterTabs = useMemo(
+		() => [
+			{ label: "All", value: "ALL", count: itemCatalogItems.length },
+			{
+				label: "In",
+				value: "IN",
+				count: itemCatalogItems.filter((product) => itemStatusKindById.get(product.id) === "IN_STOCK").length,
+			},
+			{
+				label: "Low",
+				value: "LOW",
+				count: itemCatalogItems.filter((product) => itemStatusKindById.get(product.id) === "LOW_STOCK").length,
+			},
+			{
+				label: "Out",
+				value: "OUT",
+				count: itemCatalogItems.filter((product) => itemStatusKindById.get(product.id) === "OUT_OF_STOCK").length,
+			},
+		] as const,
+		[itemCatalogItems, itemStatusKindById],
+	);
+	const serviceFilterTabs = useMemo(
+		() => [
+			{ label: "Active", value: "ACTIVE", count: activeServiceCatalogItems.length },
+			{ label: "All", value: "ALL", count: serviceCatalogItems.length },
+			{ label: "Archive", value: "ARCHIVED", count: archivedServiceCatalogItems.length },
+		] as const,
+		[activeServiceCatalogItems.length, archivedServiceCatalogItems.length, serviceCatalogItems.length],
+	);
+	const visibleCatalogItems = useMemo(() => {
+		if (catalogGroup === "SERVICES") {
+			if (serviceCatalogFilter === "ALL") return serviceCatalogItems;
+			if (serviceCatalogFilter === "ARCHIVED") return archivedServiceCatalogItems;
+			return activeServiceCatalogItems;
+		}
+		if (itemCatalogFilter === "IN") {
+			return itemCatalogItems.filter((product) => itemStatusKindById.get(product.id) === "IN_STOCK");
+		}
+		if (itemCatalogFilter === "LOW") {
+			return itemCatalogItems.filter((product) => itemStatusKindById.get(product.id) === "LOW_STOCK");
+		}
+		if (itemCatalogFilter === "OUT") {
+			return itemCatalogItems.filter((product) => itemStatusKindById.get(product.id) === "OUT_OF_STOCK");
+		}
+		return itemCatalogItems;
+	}, [
+		activeServiceCatalogItems,
+		archivedServiceCatalogItems,
+		catalogGroup,
+		itemCatalogFilter,
+		itemCatalogItems,
+		itemStatusKindById,
+		serviceCatalogFilter,
+		serviceCatalogItems,
+	]);
 	const rowAttentionTokens = useInsertedRowAttention(
 		useMemo(() => visibleCatalogItems.map((item) => item.id), [visibleCatalogItems]),
 		{
-			scopeKey: `${businessId || "no-business"}:${tab}:${catalogGroup}:${trimmedQ}`,
+			scopeKey: `${businessId || "no-business"}:${tab}:${catalogGroup}:${itemCatalogFilter}:${serviceCatalogFilter}:${trimmedQ}`,
 		},
 	);
 	const isCatalogBlockingLoad = productsQuery.isLoading && items.length === 0;
@@ -638,6 +731,34 @@ export default function PosPhone() {
 	const showCatalogEmptyCta = !trimmedQ && visibleCatalogItems.length === 0 && !productsQuery.isError;
 	const isSearchEmptyState = !!trimmedQ && visibleCatalogItems.length === 0 && !productsQuery.isError;
 	const isTrulyError = !!productsQuery.isError && visibleCatalogItems.length === 0;
+	const catalogCountLabel = useMemo(() => {
+		const countLabel = formatCompactCount(visibleCatalogItems.length);
+		if (catalogGroup === "SERVICES") {
+			return `${countLabel} services`;
+		}
+		return `${countLabel} items`;
+	}, [catalogGroup, visibleCatalogItems.length]);
+	const emptyTitle = useMemo(() => {
+		if (isSearchEmptyState) return "No results found";
+		if (catalogGroup === "SERVICES") {
+			if (serviceCatalogFilter === "ARCHIVED") return "No archived services";
+			if (serviceCatalogFilter === "ALL") return "No services yet";
+			return "No active services";
+		}
+		if (itemCatalogFilter === "IN") return "No in-stock items";
+		if (itemCatalogFilter === "LOW") return "No low-stock items";
+		if (itemCatalogFilter === "OUT") return "No out-of-stock items";
+		return "No items yet";
+	}, [catalogGroup, isSearchEmptyState, itemCatalogFilter, serviceCatalogFilter]);
+	const emptyBody = useMemo(() => {
+		if (isSearchEmptyState) return "Try a different search term or scan a different barcode.";
+		if (catalogGroup === "SERVICES") {
+			if (serviceCatalogFilter === "ARCHIVED") return "Archived services appear here and remain unavailable in POS.";
+			return "Create services in Inventory to start selling them in POS.";
+		}
+		if (itemCatalogFilter !== "ALL") return "Change the item filter to see more available products.";
+		return "Create items in Inventory to start selling.";
+	}, [catalogGroup, isSearchEmptyState, itemCatalogFilter, serviceCatalogFilter]);
 	const syncLabel = productsQuery.isFetching ? "Syncing..." : isTrulyError ? "Sync failed" : "Synced";
 	const syncColor = isTrulyError ? theme.colors.error : (theme.colors.onSurfaceVariant ?? theme.colors.onSurface);
 	const syncBg = isTrulyError
@@ -870,8 +991,28 @@ export default function PosPhone() {
 												onChange={setCatalogGroup}
 												disabled={disabled}
 												tabs={catalogGroupTabs}
-												countFormatter={(count) => formatCompactNumber(count, countryCode)}
+												countFormatter={formatCompactCount}
 											/>
+										</View>
+
+										<View style={styles.catalogFilterTabsWrap}>
+											{catalogGroup === "SERVICES" ? (
+												<BAIGroupTabs<ServiceCatalogFilterTab>
+													value={serviceCatalogFilter}
+													onChange={setServiceCatalogFilter}
+													disabled={disabled}
+													tabs={serviceFilterTabs}
+													countFormatter={formatCompactCount}
+												/>
+											) : (
+												<BAIGroupTabs<ItemCatalogFilterTab>
+													value={itemCatalogFilter}
+													onChange={setItemCatalogFilter}
+													disabled={disabled}
+													tabs={itemFilterTabs}
+													countFormatter={formatCompactCount}
+												/>
+											)}
 										</View>
 									</>
 								) : null}
@@ -881,7 +1022,7 @@ export default function PosPhone() {
 							<View style={styles.scrollArea}>
 								{tab === "CATALOG" ? (
 									<PosCatalogListShell
-										countLabel={`${visibleCatalogItems.length} items`}
+										countLabel={catalogCountLabel}
 										showTitleAndCount={false}
 										showSyncBadge={false}
 										containerStyle={styles.listShellNoContainer}
@@ -889,12 +1030,8 @@ export default function PosPhone() {
 										isFetching={productsQuery.isFetching}
 										isError={isTrulyError}
 										onRetry={() => productsQuery.refetch()}
-										emptyTitle={isSearchEmptyState ? "No results found" : "No items yet"}
-										emptyBody={
-											isSearchEmptyState
-												? "Try a different search term or scan a different barcode."
-												: "Create items in Inventory to start selling."
-										}
+										emptyTitle={emptyTitle}
+										emptyBody={emptyBody}
 										primaryCtaLabel={showCatalogEmptyCta ? "Go To Inventory" : undefined}
 										onPrimaryCta={
 											showCatalogEmptyCta ? () => switchWorkspaceReplace("/(app)/(tabs)/inventory") : undefined
@@ -920,7 +1057,10 @@ export default function PosPhone() {
 															categoryColor={item.categoryColor}
 															onPress={() => addToCart(item)}
 															disabled={
-																disabled || (status.disabled && !inCartLine) || loadingModifierProductId === item.id
+																disabled ||
+																item.isActive === false ||
+																(status.disabled && !inCartLine) ||
+																loadingModifierProductId === item.id
 															}
 														/>
 													);

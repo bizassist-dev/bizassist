@@ -12,7 +12,8 @@ import { FontAwesome6 } from "@expo/vector-icons";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
-import { BAICTAPillButton } from "@/components/ui/BAICTAButton";
+import { BAIButton } from "@/components/ui/BAIButton";
+import { BAIIconButton } from "@/components/ui/BAIIconButton";
 import { BAIRetryButton } from "@/components/ui/BAIRetryButton";
 import { ConfirmActionModal } from "@/components/settings/ConfirmActionModal";
 
@@ -210,14 +211,10 @@ export default function InventoryServicePhotoScreen({
 		});
 	}, [lockNav, productId, qc, withBusy]);
 
-	const onCancel = useCallback(() => {
-		if (isUiDisabled) return;
-		onBack();
-	}, [isUiDisabled, onBack]);
-
 	const onConfirmRemove = useCallback(() => {
 		void removePhoto();
 	}, [removePhoto]);
+	const removeIconColor = ((theme.colors as any).onError ?? "#FFFFFF") as string;
 
 	const previewNode = useMemo(() => {
 		if (hasImage) {
@@ -285,46 +282,41 @@ export default function InventoryServicePhotoScreen({
 					</View>
 
 					<View style={styles.actions}>
-						<View style={styles.primaryActions}>
-							<BAICTAPillButton
+						<View style={styles.inlineActions}>
+							<BAIIconButton
+								icon='trash-can-outline'
+								accessibilityLabel='Remove photo'
+								variant='filled'
+								size='lg'
+								iconColor={removeIconColor}
+								onPress={() => setConfirmRemoveOpen(true)}
+								disabled={isUiDisabled || !hasImage}
+								style={[styles.photoActionIconButton, { backgroundColor: theme.colors.error }]}
+							/>
+							<BAIButton
 								intent='primary'
-								variant='outline'
+								variant='solid'
+								widthPreset='standard'
+								iconLeft='image-multiple'
 								onPress={pickFromLibrary}
 								disabled={isUiDisabled}
 								style={styles.actionButton}
+								contentStyle={{ gap: 0 }}
 							>
-								Photo Library
-							</BAICTAPillButton>
-							<BAICTAPillButton
+								Library
+							</BAIButton>
+							<BAIButton
 								intent='primary'
 								variant='solid'
+								widthPreset='standard'
+								iconLeft='camera'
 								onPress={takePhoto}
 								disabled={isUiDisabled}
 								style={styles.actionButton}
+								contentStyle={{ gap: 0 }}
 							>
-								Take a Photo
-							</BAICTAPillButton>
-						</View>
-
-						<View style={styles.secondaryActions}>
-							<BAICTAPillButton
-								intent='neutral'
-								variant='outline'
-								onPress={onCancel}
-								disabled={isUiDisabled}
-								style={styles.secondaryButton}
-							>
-								Cancel
-							</BAICTAPillButton>
-							<BAICTAPillButton
-								intent='danger'
-								variant='outline'
-								onPress={() => setConfirmRemoveOpen(true)}
-								disabled={isUiDisabled || !hasImage}
-								style={styles.secondaryButton}
-							>
-								Remove Photo
-							</BAICTAPillButton>
+								Camera
+							</BAIButton>
 						</View>
 					</View>
 				</BAISurface>
@@ -368,8 +360,16 @@ const styles = StyleSheet.create({
 	previewEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },
 	previewEmptyIcon: { marginBottom: 6 },
 	actions: { gap: 10 },
-	primaryActions: { flexDirection: "row", gap: 10, marginTop: 10 },
-	secondaryActions: { marginTop: 6, flexDirection: "row", gap: 10 },
+	inlineActions: {
+		flexDirection: "row",
+		gap: 12,
+		alignItems: "center",
+		marginTop: 10,
+	},
 	actionButton: { flex: 1 },
-	secondaryButton: { flex: 1 },
+	photoActionIconButton: {
+		width: 52,
+		height: 52,
+		borderRadius: 26,
+	},
 });

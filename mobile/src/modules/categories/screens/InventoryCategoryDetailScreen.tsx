@@ -537,6 +537,7 @@ const styles = StyleSheet.create({
 		gap: 8,
 		paddingHorizontal: 0,
 		paddingTop: 0,
+		marginTop: -8,
 	},
 	heroCard: {
 		borderRadius: 18,

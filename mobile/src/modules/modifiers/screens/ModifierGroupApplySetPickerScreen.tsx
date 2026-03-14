@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
 		textAlign: "center",
 	},
 	listContent: {
-		paddingBottom: 0,
+		paddingBottom: 200,
 	},
 	row: {
 		minHeight: 74,

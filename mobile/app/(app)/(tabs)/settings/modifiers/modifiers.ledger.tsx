@@ -18,6 +18,8 @@ import { formatCompactNumber } from "@/lib/locale/businessLocale";
 import { useActiveBusinessMeta } from "@/modules/business/useActiveBusinessMeta";
 import { useAuth } from "@/modules/auth/AuthContext";
 import { modifiersApi } from "@/modules/modifiers/modifiers.api";
+import { ModifierLedgerFiltersCard } from "@/modules/modifiers/components/ModifierLedgerFiltersCard";
+import { getModifierCardBackgroundColor } from "@/modules/modifiers/modifierColors";
 import type { ModifierGroup } from "@/modules/modifiers/modifiers.types";
 import { getUserAvatarInitials } from "@/modules/auth/auth.user";
 import { FIELD_LIMITS } from "@/shared/fieldLimits";
@@ -62,13 +64,14 @@ function Row({
 	const rowNameColor = item.isArchived
 		? (theme.colors.onSurfaceVariant ?? theme.colors.onSurface)
 		: theme.colors.onSurface;
+	const cardBackgroundColor = getModifierCardBackgroundColor(theme);
 	return (
 		<BAISurface
 			style={[
 				styles.row,
 				{
 					borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
-					backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
+					backgroundColor: cardBackgroundColor,
 				},
 			]}
 			padded
@@ -201,6 +204,7 @@ export function ModifiersLedgerScreen({
 
 	const hasSearch = search.trim().length > 0;
 	const borderColor = theme.colors.outlineVariant ?? theme.colors.outline;
+	const modifierCardBackgroundColor = getModifierCardBackgroundColor(theme);
 
 	return (
 		<>
@@ -246,16 +250,10 @@ export function ModifiersLedgerScreen({
 					<SettingsScreenLayout screenStyle={styles.layoutScreen} maxWidth={layout === "tablet" ? 720 : undefined}>
 						<BAISurface style={[styles.card, { borderColor }]} padded bordered>
 							<SettingsSectionTitle>Modifiers</SettingsSectionTitle>
-							<View
-								style={[
-									styles.controlsContainer,
-									{
-										borderColor,
-										backgroundColor: theme.colors.surfaceVariant ?? theme.colors.surface,
-									},
-								]}
-							>
-								<View style={styles.controls}>
+							<ModifierLedgerFiltersCard
+								borderColor={borderColor}
+								backgroundColor={modifierCardBackgroundColor}
+								search={
 									<BAISearchBar
 										value={search}
 										onChangeText={(value) => {
@@ -266,16 +264,16 @@ export function ModifiersLedgerScreen({
 										maxLength={FIELD_LIMITS.search}
 										onClear={hasSearch ? () => setSearch("") : undefined}
 									/>
-									<View style={styles.groupTabsWrap}>
-										<BAIGroupTabs
-											tabs={modifierTabs}
-											value={filter}
-											onChange={setFilter}
-											countFormatter={(count) => formatCompactNumber(count, countryCode)}
-										/>
-									</View>
-								</View>
-							</View>
+								}
+								tabs={
+									<BAIGroupTabs
+										tabs={modifierTabs}
+										value={filter}
+										onChange={setFilter}
+										countFormatter={(count) => formatCompactNumber(count, countryCode)}
+									/>
+								}
+							/>
 
 							<View style={styles.listSection}>
 								{groupsQuery.isLoading ? (
@@ -344,17 +342,6 @@ const styles = StyleSheet.create({
 	root: { flex: 1 },
 	layoutScreen: { paddingHorizontal: 8, paddingTop: 0 },
 	card: { flex: 1, borderRadius: 18, gap: 6 },
-	controlsContainer: {
-		borderWidth: 1,
-		borderRadius: 14,
-		paddingHorizontal: 8,
-		paddingTop: 8,
-		paddingBottom: 6,
-	},
-	controls: { gap: 4 },
-	groupTabsWrap: {
-		paddingTop: 4,
-	},
 	listSection: { flex: 1, minHeight: 0 },
 	list: { flex: 1, minHeight: 0 },
 	stateWrap: { paddingTop: 8, alignItems: "flex-start" },

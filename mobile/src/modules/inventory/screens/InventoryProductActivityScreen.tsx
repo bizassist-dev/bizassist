@@ -3,13 +3,14 @@
 
 import React, { useCallback, useMemo } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { BAIActivityIndicator } from "@/components/system/BAIActivityIndicator";
 import { BAITimeAgo } from "@/components/system/BAITimeAgo";
+import { BAIHeader } from "@/components/ui/BAIHeader";
 import { BAIScreen } from "@/components/ui/BAIScreen";
 import { BAISurface } from "@/components/ui/BAISurface";
 import { BAIText } from "@/components/ui/BAIText";
@@ -21,7 +22,6 @@ import { InventoryMovementRow } from "@/modules/inventory/components/InventoryMo
 import type { InventoryMovement, InventoryProductDetail } from "@/modules/inventory/inventory.types";
 import { formatOnHand } from "@/modules/inventory/inventory.selectors";
 import { toCacheBustedImageUri } from "@/modules/media/media.image";
-import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 
 function extractApiErrorMessage(err: any): string {
 	const data = err?.response?.data;
@@ -301,19 +301,16 @@ export default function InventoryProductActivityScreen() {
 		movementsQuery.refetch();
 	}, [productId, movementsQuery]);
 	const onBack = useCallback(() => {
+		if (router.canGoBack?.()) {
+			router.back();
+			return;
+		}
 		if (!productId) {
 			router.back();
 			return;
 		}
 		router.replace(`/(app)/(tabs)/inventory/products/${encodeURIComponent(productId)}` as any);
 	}, [productId, router]);
-
-	// Header Navigation Governance: activity list is a detail view → Back to product detail.
-	const headerOptions = useInventoryHeader("detail", {
-		title: "Item Activity List",
-		headerBackTitle: "Item Details",
-		onBack,
-	});
 
 	const onOpenMovement = useCallback(
 		(movementId: string) => {
@@ -415,19 +412,25 @@ export default function InventoryProductActivityScreen() {
 
 	if (!productId) {
 		return (
-			<BAIScreen padded>
-				<BAIText variant='body' muted>
-					Item not available.
-				</BAIText>
+			<BAIScreen padded={false} tabbed safeTop={false} safeBottom={false} style={styles.root}>
+				<BAIHeader title='Item Activity List' variant='back' onLeftPress={onBack} />
+				<View style={styles.fallbackScreen}>
+					<BAIText variant='body' muted>
+						Item not available.
+					</BAIText>
+				</View>
 			</BAIScreen>
 		);
 	}
 
 	if (productDetailQuery.isLoading && !product) {
 		return (
-			<BAIScreen padded>
-				<View style={styles.center}>
-					<BAIActivityIndicator />
+			<BAIScreen padded={false} tabbed safeTop={false} safeBottom={false} style={styles.root}>
+				<BAIHeader title='Item Activity List' variant='back' onLeftPress={onBack} />
+				<View style={styles.fallbackScreen}>
+					<View style={styles.center}>
+						<BAIActivityIndicator />
+					</View>
 				</View>
 			</BAIScreen>
 		);
@@ -435,15 +438,18 @@ export default function InventoryProductActivityScreen() {
 
 	if (productDetailQuery.isError && !product) {
 		return (
-			<BAIScreen padded>
-				<View style={styles.center}>
-					<BAIText variant='body' muted style={{ textAlign: "center" }}>
-						{extractApiErrorMessage(productDetailQuery.error)}
-					</BAIText>
-					<View style={styles.actions}>
-						<BAIRetryButton mode='outlined' onPress={onRetry} disabled={!productId}>
-							Retry
-						</BAIRetryButton>
+			<BAIScreen padded={false} tabbed safeTop={false} safeBottom={false} style={styles.root}>
+				<BAIHeader title='Item Activity List' variant='back' onLeftPress={onBack} />
+				<View style={styles.fallbackScreen}>
+					<View style={styles.center}>
+						<BAIText variant='body' muted style={{ textAlign: "center" }}>
+							{extractApiErrorMessage(productDetailQuery.error)}
+						</BAIText>
+						<View style={styles.actions}>
+							<BAIRetryButton mode='outlined' onPress={onRetry} disabled={!productId}>
+								Retry
+							</BAIRetryButton>
+						</View>
 					</View>
 				</View>
 			</BAIScreen>
@@ -451,10 +457,9 @@ export default function InventoryProductActivityScreen() {
 	}
 
 	return (
-		<>
-			<Stack.Screen options={headerOptions} />
-
-			<BAIScreen tabbed padded={false} safeTop={false} style={styles.root} contentContainerStyle={styles.screen}>
+		<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} style={styles.root}>
+			<BAIHeader title='Item Activity List' variant='back' onLeftPress={onBack} />
+			<View style={styles.screen}>
 				{/* CONSOLIDATED CARD */}
 				<BAISurface style={[styles.card, styles.unifiedCard]} padded={false}>
 					<View style={styles.heroSection}>
@@ -556,15 +561,16 @@ export default function InventoryProductActivityScreen() {
 						{activityContent}
 					</ScrollView>
 				</BAISurface>
-			</BAIScreen>
-		</>
+			</View>
+		</BAIScreen>
 	);
 }
 
 const styles = StyleSheet.create({
 	root: { flex: 1 },
 
-	screen: { paddingHorizontal: 12, paddingBottom: 0, paddingTop: 0, gap: 0 },
+	screen: { flex: 1, paddingHorizontal: 12, paddingBottom: 0, paddingTop: 0, gap: 0 },
+	fallbackScreen: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
 
 	card: { overflow: "hidden" },
 	unifiedCard: { flex: 1, minHeight: 0 },

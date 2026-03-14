@@ -273,7 +273,6 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 	);
 	const [rowWidth, setRowWidth] = useState(0);
 	const activeTranslateX = useRef(new Animated.Value(0)).current;
-	const activeOpacity = useRef(new Animated.Value(0)).current;
 	const activeIndicatorReadyRef = useRef(false);
 	const animationSequenceRef = useRef(0);
 
@@ -397,7 +396,6 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 		const nextTranslateX = activeTabIndex * (activeSegmentWidth + DOCK_ITEM_GAP);
 		if (!activeIndicatorReadyRef.current) {
 			activeTranslateX.setValue(nextTranslateX);
-			activeOpacity.setValue(1);
 			activeIndicatorReadyRef.current = true;
 			setDisplayedActiveTabIndex(activeTabIndex);
 			return;
@@ -405,6 +403,7 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 
 		const animationSequence = animationSequenceRef.current + 1;
 		animationSequenceRef.current = animationSequence;
+		activeTranslateX.stopAnimation();
 		Animated.timing(activeTranslateX, {
 			toValue: nextTranslateX,
 			duration: 240,
@@ -415,7 +414,7 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 			if (animationSequenceRef.current !== animationSequence) return;
 			setDisplayedActiveTabIndex(activeTabIndex);
 		});
-	}, [activeOpacity, activeSegmentWidth, activeTabIndex, activeTranslateX]);
+	}, [activeSegmentWidth, activeTabIndex, activeTranslateX]);
 
 	const isScanOpen = isInventoryScanPath(pathname);
 	const scanIconColor = iconIdle;
@@ -490,7 +489,7 @@ export function BAIBottomTabBar(props: BottomTabBarProps) {
 										width: activeIndicatorWidth,
 										backgroundColor: activeBubbleBg,
 										borderColor: activeBorderColor,
-										opacity: activeOpacity,
+										opacity: 1,
 										transform: [{ translateX: activeTranslateX }],
 									},
 								]}

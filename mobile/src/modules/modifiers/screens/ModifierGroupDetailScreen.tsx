@@ -21,6 +21,7 @@ import { useInventoryHeader } from "@/modules/inventory/useInventoryHeader";
 import { useAppHeader } from "@/modules/navigation/useAppHeader";
 import { modifiersApi } from "@/modules/modifiers/modifiers.api";
 import { updateModifierGroupArchiveState } from "@/modules/modifiers/modifiers.cache";
+import { getModifierCardBackgroundColor } from "@/modules/modifiers/modifierColors";
 import type { SharedModifierAvailabilityPreview } from "@/modules/modifiers/modifiers.types";
 import { useAppToast } from "@/providers/AppToastProvider";
 
@@ -62,6 +63,7 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 
 	const outline = theme.colors.outlineVariant ?? theme.colors.outline;
 	const surfaceAlt = theme.colors.surfaceVariant ?? theme.colors.surface;
+	const modifierCardBackgroundColor = getModifierCardBackgroundColor(theme);
 
 	const query = useQuery({
 		queryKey: ["modifiers", "group", groupId],
@@ -235,7 +237,12 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 							</View>
 						) : (
 							<>
-								<View style={[styles.headerControlsContainer, { borderColor: outline }]}>
+								<View
+									style={[
+										styles.headerControlsContainer,
+										{ borderColor: outline, backgroundColor: theme.colors.surface },
+									]}
+								>
 									{!group.isArchived ? (
 										<View style={styles.topActionRow}>
 											<BAIButton
@@ -272,7 +279,12 @@ export function ModifierGroupDetailScreen({ mode }: { mode: "settings" | "invent
 										keyExtractor={(item) => item.id}
 										style={styles.rowsList}
 										renderItem={({ item }) => (
-											<BAISurface style={[styles.optionRow, { borderColor: outline, backgroundColor: surfaceAlt }]}>
+											<BAISurface
+												style={[
+													styles.optionRow,
+													{ borderColor: outline, backgroundColor: modifierCardBackgroundColor },
+												]}
+											>
 												<View style={styles.optionInlineContent}>
 													<BAIText variant='body' numberOfLines={1} ellipsizeMode='tail' style={styles.optionNameText}>
 														{item.name}

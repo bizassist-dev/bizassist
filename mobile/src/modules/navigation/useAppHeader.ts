@@ -20,6 +20,7 @@ export type UseAppHeaderOptions = {
 	title?: string;
 	headerBackTitle?: string;
 	backLabel?: string;
+	/** Defaults to true. Avatar placeholder is shown when there is no right-side action. */
 	showAvatarPlaceholder?: boolean;
 	disabled?: boolean;
 	onBack?: () => void;
@@ -49,7 +50,7 @@ export function useAppHeader(screenClass: AppScreenClass, options?: UseAppHeader
 
 	const title = options?.title;
 	const headerBackTitle = options?.headerBackTitle ?? options?.backLabel;
-	const showAvatarPlaceholder = !!options?.showAvatarPlaceholder;
+	const showAvatarPlaceholder = options?.showAvatarPlaceholder ?? true;
 	const disabled = !!options?.disabled;
 	const onBack = options?.onBack;
 	const onExit = options?.onExit;

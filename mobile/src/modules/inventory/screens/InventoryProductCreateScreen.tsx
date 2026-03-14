@@ -43,6 +43,7 @@ import { BAIPressableRow } from "@/components/ui/BAIPressableRow";
 import { ConfirmActionModal } from "@/components/settings/ConfirmActionModal";
 
 import { useAppBusy } from "@/hooks/useAppBusy";
+import { getStandardScrollBottomPadding } from "@/lib/layout/scrollGovernance";
 import { useAppToast } from "@/providers/AppToastProvider";
 import { useProcessExitGuard } from "@/modules/navigation/useProcessExitGuard";
 
@@ -411,6 +412,7 @@ export default function InventoryProductCreateScreen({
 
 	const { draftId, draft, patch, reset } = useProductCreateDraft(paramDraftId);
 	const createdProductIdRef = useRef<string | null>(null);
+	const [isModifiersCollapsed, setIsModifiersCollapsed] = useState(() => (draft.modifierGroupIds?.length ?? 0) === 0);
 
 	useEffect(() => {
 		const currentDraftId = safeString((params as any)?.[DRAFT_ID_KEY]).trim();
@@ -811,6 +813,8 @@ export default function InventoryProductCreateScreen({
 		return color || null;
 	}, [categoriesQuery.data?.items, draft.categoryId]);
 	const hasAvailableModifierGroups = (modifierGroupsQuery.data?.length ?? 0) > 0;
+	const selectedModifierCount = draft.modifierGroupIds.length;
+	const modifiersSummaryText = selectedModifierCount > 0 ? `${selectedModifierCount} selected` : "Optional";
 	const selectedTaxCount = draft.selectedTaxIds.length;
 	const taxesHelperText = useMemo(() => {
 		if (draft.taxExempt || selectedTaxCount === 0) return "No tax applied";
@@ -1404,6 +1408,12 @@ export default function InventoryProductCreateScreen({
 		onExit: guardedOnExitToAddItems,
 		exitFallbackRoute: addItemsRoute,
 	});
+	const formBottomPadding = useMemo(() => {
+		return getStandardScrollBottomPadding({
+			basePadding: styles.formContainer.paddingBottom,
+			keyboardOpen: isAnyKeyboardOpen,
+		});
+	}, [isAnyKeyboardOpen]);
 
 	return (
 		<>
@@ -1414,11 +1424,11 @@ export default function InventoryProductCreateScreen({
 				}}
 			/>
 
-			<BAIScreen tabbed padded={false} safeTop={false} safeBottom={false} safeAreaGradientBottom style={styles.root}>
+			<BAIScreen tabbed padded={false} safeTop={false} safeAreaGradientBottom style={styles.root}>
 				<View style={[styles.screen, styles.scroll, { backgroundColor: theme.colors.background }]}>
 					<ScrollView
 						style={styles.formScroll}
-						contentContainerStyle={styles.formContainer}
+						contentContainerStyle={[styles.formContainer, { paddingBottom: formBottomPadding }]}
 						showsVerticalScrollIndicator={false}
 						showsHorizontalScrollIndicator={false}
 						keyboardShouldPersistTaps='handled'
@@ -1799,39 +1809,65 @@ export default function InventoryProductCreateScreen({
 						{routeScope === "inventory" ? (
 							<BAISurface style={[styles.sectionSurface, { borderColor }]} padded={false}>
 								<View style={styles.sectionContent}>
-									<BAIText variant='subtitle'>Modifiers</BAIText>
-
-									<ModifierGroupSelector
-										selectedIds={draft.modifierGroupIds}
-										onChange={(modifierGroupIds) => patch({ modifierGroupIds })}
+									<Pressable
+										onPress={() => setIsModifiersCollapsed((current) => !current)}
 										disabled={isUiDisabled}
-										showHeader={false}
-										useContainer={false}
-										showRowDividers
-										emptyMode='hidden'
-										groups={modifierGroupsQuery.data}
-										isLoading={modifierGroupsQuery.isLoading}
-										isError={modifierGroupsQuery.isError}
-									/>
-
-									{!hasAvailableModifierGroups && !modifierGroupsQuery.isLoading && !modifierGroupsQuery.isError ? (
-										<>
-											<BAIText variant='body' style={styles.modifiersHelperText}>
-												Add a custom set of modifiers to customize this item at checkout, such as toppings, add-ons, or
-												special requests.
+										style={({ pressed }) => [styles.sectionToggleRow, pressed && !isUiDisabled ? styles.sectionTogglePressed : null]}
+									>
+										<View style={styles.sectionToggleTitleWrap}>
+											<BAIText variant='subtitle'>Modifiers</BAIText>
+											<BAIText variant='caption' muted>
+												Customize this item with optional checkout add-ons.
 											</BAIText>
-											<BAIButton
-												variant='solid'
-												intent='primary'
-												shape='default'
-												onPress={() => {
-													dismissMoneyKeyboardIfOpen();
-													openCreateModifierSet();
-												}}
+										</View>
+
+										<View style={styles.sectionToggleMeta}>
+											<BAIText variant='caption' muted>
+												{modifiersSummaryText}
+											</BAIText>
+											<MaterialCommunityIcons
+												name={isModifiersCollapsed ? "chevron-down" : "chevron-up"}
+												size={22}
+												color={theme.colors.onSurfaceVariant ?? theme.colors.onSurface}
+											/>
+										</View>
+									</Pressable>
+
+									{!isModifiersCollapsed ? (
+										<>
+											<ModifierGroupSelector
+												selectedIds={draft.modifierGroupIds}
+												onChange={(modifierGroupIds) => patch({ modifierGroupIds })}
 												disabled={isUiDisabled}
-											>
-												Create Modifier Set
-											</BAIButton>
+												showHeader={false}
+												useContainer={false}
+												showRowDividers
+												emptyMode='hidden'
+												groups={modifierGroupsQuery.data}
+												isLoading={modifierGroupsQuery.isLoading}
+												isError={modifierGroupsQuery.isError}
+											/>
+
+											{!hasAvailableModifierGroups && !modifierGroupsQuery.isLoading && !modifierGroupsQuery.isError ? (
+												<>
+													<BAIText variant='body' style={styles.modifiersHelperText}>
+														Add a custom set of modifiers to customize this item at checkout, such as toppings, add-ons, or
+														special requests.
+													</BAIText>
+													<BAIButton
+														variant='solid'
+														intent='primary'
+														shape='default'
+														onPress={() => {
+															dismissMoneyKeyboardIfOpen();
+															openCreateModifierSet();
+														}}
+														disabled={isUiDisabled}
+													>
+														Create Modifier Set
+													</BAIButton>
+												</>
+											) : null}
 										</>
 									) : null}
 								</View>
@@ -1844,12 +1880,12 @@ export default function InventoryProductCreateScreen({
 							</BAIText>
 						) : null}
 
-						<BAISurface style={[styles.sectionSurface, styles.actionsSection, { borderColor }]} padded={false}>
+						<BAISurface style={[styles.sectionSurface, { borderColor }]} padded={false}>
 							<View style={styles.actionsContainer}>
 								<BAIText variant='caption' muted style={styles.actionsHelperText}>
 									Use Save to keep this item, or Save & Another to save and continue adding the next item.
 								</BAIText>
-								<View style={[styles.actions, isAnyKeyboardOpen ? styles.actionsKeyboardOpen : null]}>
+								<View style={styles.actions}>
 									<BAICTAPillButton
 										intent='primary'
 										variant='solid'
@@ -1913,7 +1949,7 @@ const styles = StyleSheet.create({
 	formContainer: {
 		flexGrow: 1,
 		paddingTop: 0,
-		paddingBottom: 8,
+		paddingBottom: 24,
 		gap: FORM_VERTICAL_GAP,
 	},
 	sectionSurface: {
@@ -1924,6 +1960,25 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 12,
 		gap: FORM_VERTICAL_GAP,
+	},
+	sectionToggleRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		gap: FORM_VERTICAL_GAP,
+	},
+	sectionTogglePressed: {
+		opacity: 0.85,
+	},
+	sectionToggleTitleWrap: {
+		flex: 1,
+		minWidth: 0,
+		gap: 2,
+	},
+	sectionToggleMeta: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 4,
 	},
 	sectionHelperText: {
 		lineHeight: 24,
@@ -1951,9 +2006,6 @@ const styles = StyleSheet.create({
 	},
 	taxEditText: {
 		textDecorationLine: "none",
-	},
-	actionsSection: {
-		marginBottom: 200,
 	},
 	actionsContainer: {
 		paddingHorizontal: 12,
@@ -2066,9 +2118,6 @@ const styles = StyleSheet.create({
 		gap: FORM_VERTICAL_GAP,
 		marginTop: 0,
 		marginBottom: 0,
-	},
-	actionsKeyboardOpen: {
-		marginBottom: 200,
 	},
 	optionSummaryWrap: {
 		gap: FORM_VERTICAL_GAP,

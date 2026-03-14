@@ -31,6 +31,8 @@ type FixtureProductSeed = {
 	name: string;
 	sku: string;
 	type: ProductType;
+	barcode?: string;
+	description?: string;
 	price: string;
 	priceMinor: bigint;
 	cost: string;
@@ -40,7 +42,13 @@ type FixtureProductSeed = {
 	reorderPoint: string | null;
 	categoryId: string;
 	posTileLabel: string;
+	posTileColor?: string;
 	serviceDurationMins?: number;
+	durationTotalMinutes?: number;
+	processingEnabled?: boolean;
+	durationInitialMinutes?: number | null;
+	durationProcessingMinutes?: number | null;
+	durationFinalMinutes?: number | null;
 };
 
 const EXTRA_PHYSICAL_COUNT = 32;
@@ -51,6 +59,10 @@ const FIXTURE_OWNER_EMAIL = (process.env.TEST_FIXTURE_OWNER_EMAIL ?? "ui.fixture
 	.toLowerCase();
 
 const FIXTURE_OWNER_PASSWORD = process.env.TEST_FIXTURE_OWNER_PASSWORD ?? "Password123!";
+
+function normalizeSeedName(value: string): string {
+	return value.trim().toLowerCase();
+}
 
 const IDS = {
 	business: "11111111-1111-4111-8111-111111111111",
@@ -253,6 +265,9 @@ async function addFixtureCompany() {
 					name: "Espresso Shot",
 					sku: "UI-PRD-001",
 					type: ProductType.PHYSICAL,
+					barcode: "2800000000017",
+					description:
+						"Flagship espresso test item with dense option coverage, generated variations, and a long modifier stack for internal scroll QA.",
 					price: "95.00",
 					priceMinor: BigInt(9500),
 					cost: "35.00",
@@ -261,6 +276,7 @@ async function addFixtureCompany() {
 					onHandCached: "48",
 					reorderPoint: "10",
 					categoryId: IDS.categories.beverages,
+					posTileColor: "#7C3AED",
 					posTileLabel: "ESP",
 				},
 				{
@@ -313,6 +329,9 @@ async function addFixtureCompany() {
 					name: "Latte Art Class",
 					sku: "UI-SVC-001",
 					type: ProductType.SERVICE,
+					barcode: "2900000000014",
+					description:
+						"Premium guided class fixture with segmented timing and extended add-on coverage for service edit screen scroll testing.",
 					price: "850.00",
 					priceMinor: BigInt(85000),
 					cost: "300.00",
@@ -321,7 +340,13 @@ async function addFixtureCompany() {
 					onHandCached: "0",
 					reorderPoint: null,
 					categoryId: IDS.categories.services,
+					posTileColor: "#F59E0B",
 					serviceDurationMins: 60,
+					durationTotalMinutes: 90,
+					processingEnabled: true,
+					durationInitialMinutes: 15,
+					durationProcessingMinutes: 50,
+					durationFinalMinutes: 25,
 					posTileLabel: "ART",
 				},
 				{
@@ -408,6 +433,8 @@ async function addFixtureCompany() {
 						type: product.type,
 						name: product.name,
 						sku: product.sku,
+						barcode: product.barcode ?? null,
+						description: product.description ?? null,
 						price: product.price,
 						priceMinor: product.priceMinor,
 						cost: product.cost,
@@ -417,8 +444,14 @@ async function addFixtureCompany() {
 						reorderPoint: product.reorderPoint,
 						isActive: true,
 						posTileMode: PosTileMode.COLOR,
+						posTileColor: product.posTileColor ?? null,
 						posTileLabel: product.posTileLabel,
 						serviceDurationMins: product.serviceDurationMins ?? null,
+						durationTotalMinutes: product.durationTotalMinutes ?? product.serviceDurationMins ?? null,
+						processingEnabled: product.processingEnabled ?? false,
+						durationInitialMinutes: product.durationInitialMinutes ?? null,
+						durationProcessingMinutes: product.durationProcessingMinutes ?? null,
+						durationFinalMinutes: product.durationFinalMinutes ?? null,
 					},
 					create: {
 						...(product.id ? { id: product.id } : {}),
@@ -428,6 +461,8 @@ async function addFixtureCompany() {
 						type: product.type,
 						name: product.name,
 						sku: product.sku,
+						barcode: product.barcode ?? null,
+						description: product.description ?? null,
 						price: product.price,
 						priceMinor: product.priceMinor,
 						cost: product.cost,
@@ -437,12 +472,245 @@ async function addFixtureCompany() {
 						reorderPoint: product.reorderPoint,
 						isActive: true,
 						posTileMode: PosTileMode.COLOR,
+						posTileColor: product.posTileColor ?? null,
 						posTileLabel: product.posTileLabel,
 						serviceDurationMins: product.serviceDurationMins ?? null,
+						durationTotalMinutes: product.durationTotalMinutes ?? product.serviceDurationMins ?? null,
+						processingEnabled: product.processingEnabled ?? false,
+						durationInitialMinutes: product.durationInitialMinutes ?? null,
+						durationProcessingMinutes: product.durationProcessingMinutes ?? null,
+						durationFinalMinutes: product.durationFinalMinutes ?? null,
 					},
 				});
 
 				productIdBySku.set(product.sku, saved.id);
+			}
+
+			const espressoProductId = productIdBySku.get("UI-PRD-001");
+			if (espressoProductId) {
+				const seededOptionSetDefinitions = [
+					{
+						name: "espresso-size",
+						displayName: "Cup Size",
+						sortOrder: 1,
+						values: ["Solo", "Doppio", "Quad"],
+					},
+					{
+						name: "espresso-temperature",
+						displayName: "Temperature",
+						sortOrder: 2,
+						values: ["Hot", "Iced"],
+					},
+					{
+						name: "espresso-sweetness",
+						displayName: "Sweetness",
+						sortOrder: 3,
+						values: ["No Sugar", "Half Sweet", "Full Sweet"],
+					},
+					{
+						name: "espresso-bean-profile",
+						displayName: "Bean Profile",
+						sortOrder: 4,
+						values: ["House Blend", "Dark Roast"],
+					},
+				] as const;
+
+				const seededOptionSets: Array<{
+					id: string;
+					name: string;
+					displayName: string;
+					sortOrder: number;
+					values: Array<{ id: string; value: string; sortOrder: number }>;
+				}> = [];
+
+				for (const definition of seededOptionSetDefinitions) {
+					const optionSet = await tx.optionSet.upsert({
+						where: {
+							businessId_nameNormalized: {
+								businessId: IDS.business,
+								nameNormalized: normalizeSeedName(definition.name),
+							},
+						},
+						update: {
+							name: definition.name,
+							displayName: definition.displayName,
+							sortOrder: definition.sortOrder,
+							isActive: true,
+							archivedAt: null,
+						},
+						create: {
+							businessId: IDS.business,
+							name: definition.name,
+							displayName: definition.displayName,
+							nameNormalized: normalizeSeedName(definition.name),
+							sortOrder: definition.sortOrder,
+							isActive: true,
+						},
+						select: { id: true, name: true, displayName: true, sortOrder: true },
+					});
+
+					const optionValues: Array<{ id: string; value: string; sortOrder: number }> = [];
+					for (const [index, rawValue] of definition.values.entries()) {
+						const optionValue = await tx.optionValue.upsert({
+							where: {
+								optionSetId_valueNormalized: {
+									optionSetId: optionSet.id,
+									valueNormalized: normalizeSeedName(rawValue),
+								},
+							},
+							update: {
+								value: rawValue,
+								sortOrder: index,
+								isActive: true,
+								archivedAt: null,
+							},
+							create: {
+								businessId: IDS.business,
+								optionSetId: optionSet.id,
+								value: rawValue,
+								valueNormalized: normalizeSeedName(rawValue),
+								sortOrder: index,
+								isActive: true,
+							},
+							select: { id: true, value: true, sortOrder: true },
+						});
+						optionValues.push(optionValue);
+					}
+
+					seededOptionSets.push({
+						id: optionSet.id,
+						name: optionSet.name,
+						displayName: optionSet.displayName,
+						sortOrder: optionSet.sortOrder,
+						values: optionValues,
+					});
+				}
+
+				for (const optionSet of seededOptionSets) {
+					await tx.productOptionSet.upsert({
+						where: {
+							productId_optionSetId: {
+								productId: espressoProductId,
+								optionSetId: optionSet.id,
+							},
+						},
+						update: {
+							businessId: IDS.business,
+							sortOrder: optionSet.sortOrder,
+						},
+						create: {
+							businessId: IDS.business,
+							productId: espressoProductId,
+							optionSetId: optionSet.id,
+							sortOrder: optionSet.sortOrder,
+						},
+					});
+				}
+
+				await tx.productOptionSet.deleteMany({
+					where: {
+						businessId: IDS.business,
+						productId: espressoProductId,
+						optionSetId: { notIn: seededOptionSets.map((optionSet) => optionSet.id) },
+					},
+				});
+
+				const seededVariations: Array<{
+					variationKey: string;
+					displayName: string;
+					sortOrder: number;
+					valueMap: Record<string, string>;
+				}> = [];
+
+				const [sizeSet, temperatureSet, sweetnessSet, beanSet] = seededOptionSets;
+				let variationSortOrder = 0;
+				for (const sizeValue of sizeSet.values) {
+					for (const temperatureValue of temperatureSet.values) {
+						for (const sweetnessValue of sweetnessSet.values) {
+							for (const beanValue of beanSet.values) {
+								const valueMap = {
+									[sizeSet.id]: sizeValue.id,
+									[temperatureSet.id]: temperatureValue.id,
+									[sweetnessSet.id]: sweetnessValue.id,
+									[beanSet.id]: beanValue.id,
+								};
+								seededVariations.push({
+									variationKey: [
+										`${sizeSet.id}:${sizeValue.id}`,
+										`${temperatureSet.id}:${temperatureValue.id}`,
+										`${sweetnessSet.id}:${sweetnessValue.id}`,
+										`${beanSet.id}:${beanValue.id}`,
+									].join("|"),
+									displayName: [sizeValue.value, temperatureValue.value, sweetnessValue.value, beanValue.value].join(
+										" / ",
+									),
+									sortOrder: variationSortOrder++,
+									valueMap,
+								});
+							}
+						}
+					}
+				}
+
+				for (const variation of seededVariations) {
+					const savedVariation = await tx.productVariation.upsert({
+						where: {
+							productId_variationKey: {
+								productId: espressoProductId,
+								variationKey: variation.variationKey,
+							},
+						},
+						update: {
+							businessId: IDS.business,
+							displayName: variation.displayName,
+							sortOrder: variation.sortOrder,
+							isActive: true,
+							archivedAt: null,
+						},
+						create: {
+							businessId: IDS.business,
+							productId: espressoProductId,
+							displayName: variation.displayName,
+							variationKey: variation.variationKey,
+							sortOrder: variation.sortOrder,
+							isActive: true,
+							trackInventory: true,
+						},
+						select: { id: true },
+					});
+
+					await tx.variationOptionValue.deleteMany({
+						where: { businessId: IDS.business, variationId: savedVariation.id },
+					});
+
+					await tx.variationOptionValue.createMany({
+						data: Object.entries(variation.valueMap).map(([optionSetId, optionValueId], index) => ({
+							businessId: IDS.business,
+							variationId: savedVariation.id,
+							optionSetId,
+							optionValueId,
+							sortOrder: index,
+						})),
+					});
+				}
+
+				await tx.productVariation.updateMany({
+					where: {
+						businessId: IDS.business,
+						productId: espressoProductId,
+						variationKey: { notIn: seededVariations.map((variation) => variation.variationKey) },
+					},
+					data: {
+						isActive: false,
+						archivedAt: new Date(),
+					},
+				});
+
+				await tx.product.update({
+					where: { id: espressoProductId },
+					data: { hasVariations: true, updatedAt: new Date() },
+					select: { id: true },
+				});
 			}
 
 			const stockMovements = [
@@ -886,11 +1154,22 @@ async function addFixtureCompany() {
 			const productModifierLinks = [
 				{ productSku: "UI-PRD-001", modifierGroupId: IDS.modifiers.milkChoice, sortOrder: 1 },
 				{ productSku: "UI-PRD-001", modifierGroupId: IDS.modifiers.extraShots, sortOrder: 2 },
+				{ productSku: "UI-PRD-001", modifierGroupId: IDS.modifiers.toppings, sortOrder: 3 },
+				...extraModifierGroups.slice(0, 8).map((group, idx) => ({
+					productSku: "UI-PRD-001",
+					modifierGroupId: group.id,
+					sortOrder: 4 + idx,
+				})),
 				{ productSku: "UI-PRD-002", modifierGroupId: IDS.modifiers.milkChoice, sortOrder: 1 },
 				{ productSku: "UI-PRD-002", modifierGroupId: IDS.modifiers.toppings, sortOrder: 2 },
 				{ productSku: "UI-SVC-001", modifierGroupId: IDS.modifiers.serviceAddOns, sortOrder: 1 },
+				...extraModifierGroups.slice(8, 16).map((group, idx) => ({
+					productSku: "UI-SVC-001",
+					modifierGroupId: group.id,
+					sortOrder: 2 + idx,
+				})),
 				{ productSku: "UI-SVC-002", modifierGroupId: IDS.modifiers.serviceAddOns, sortOrder: 1 },
-			] as const;
+			];
 
 			for (const link of productModifierLinks) {
 				const productId = productIdBySku.get(link.productSku);
